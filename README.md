@@ -133,9 +133,11 @@ Only run one polling process for a Telegram bot token at a time.
 
 ## Commit And Push
 
-Kiro is responsible for editing files inside the mounted content repo. After Kiro returns
-valid JSON, the Telegram runtime stages and commits any content repo changes. It can also
-push deterministically when enabled:
+Kiro is responsible for editing files inside the mounted content repo. Before accepting a
+new capture, the Telegram runtime requires the content repo worktree to be clean; this
+prevents a later successful capture from accidentally committing older partial output.
+After Kiro returns valid JSON, the runtime stages and commits any content repo changes. It
+can also push deterministically when enabled:
 
 ```env
 GIT_PUSH=true

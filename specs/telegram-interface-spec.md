@@ -8,6 +8,7 @@ This repository provides the Telegram surface for a Kiro-operated content archiv
 
 - Authenticate Telegram users with an allowlist.
 - Download Telegram files into a local runtime cache.
+- Refuse new captures when the content repository has pre-existing uncommitted changes.
 - Copy or move incoming files into the content repository under `.content-archiver/incoming/<request-id>/`.
 - Write a durable `request.yml` describing the incoming item.
 - Select a workflow prompt from the content repository `.kiro/workflows/` directory based on media type.
@@ -160,15 +161,16 @@ read/write.
 
 Capture workflow push procedure:
 
-1. Snapshot `HEAD` in the content repository before invoking Kiro.
-2. Invoke Kiro with the content repository as `cwd`.
-3. Parse Kiro's JSON response.
-4. If the content repo has changes, run `git add -A` and `git commit -m "capture: add <capture-id> <media-type>"`.
-5. If `HEAD` changed and `GIT_PUSH=true`, push `HEAD:<GIT_BRANCH>` to `<GIT_REMOTE>`.
-6. Use a temporary Git HTTP auth header for the push command.
-7. Do not write the GitHub token into `.git/config`.
-8. Do not pass `GITHUB_TOKEN` into the Kiro subprocess environment.
-9. Redact both raw tokens and temporary auth headers from runtime errors.
+1. Verify the content repository worktree is clean before writing the new incoming request.
+2. Snapshot `HEAD` in the content repository before invoking Kiro.
+3. Invoke Kiro with the content repository as `cwd`.
+4. Parse Kiro's JSON response.
+5. If the content repo has changes, run `git add -A` and `git commit -m "capture: add <capture-id> <media-type>"`.
+6. If `HEAD` changed and `GIT_PUSH=true`, push `HEAD:<GIT_BRANCH>` to `<GIT_REMOTE>`.
+7. Use a temporary Git HTTP auth header for the push command.
+8. Do not write the GitHub token into `.git/config`.
+9. Do not pass `GITHUB_TOKEN` into the Kiro subprocess environment.
+10. Redact both raw tokens and temporary auth headers from runtime errors.
 
 Search workflows must not commit or push.
 

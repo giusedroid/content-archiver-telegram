@@ -44,6 +44,13 @@ class GitRepository:
         completed = self._git("status", "--porcelain", check=True)
         return bool(completed.stdout.strip())
 
+    def assert_clean_for_capture(self) -> None:
+        if self.has_changes():
+            raise GitPushError(
+                "Content repository has uncommitted changes. Commit, push, or clean the "
+                "content repo before processing another capture."
+            )
+
     def commit_all_if_changed(self, *, message: str) -> GitCommitResult:
         before_head = self.current_head()
         if not self.has_changes():

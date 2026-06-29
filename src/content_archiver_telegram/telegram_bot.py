@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Settings
+from .git_push import GitPushError, GitRepository
 from .incoming import IncomingRequest, request_id, write_incoming_request
 from .kiro_runner import KiroRunner
 from .workflows import workflow_path
@@ -41,6 +42,11 @@ def run_bot(settings: Settings) -> None:
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not _authorized(update, settings):
             await _reject(update)
+            return
+        try:
+            GitRepository(settings).assert_clean_for_capture()
+        except GitPushError as exc:
+            await update.effective_message.reply_text(str(exc))
             return
         request, source_file = await _request_from_update(update, context, settings)
         request_path = write_incoming_request(

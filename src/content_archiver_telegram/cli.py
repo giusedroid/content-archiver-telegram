@@ -5,6 +5,7 @@ from pathlib import Path
 import typer
 
 from .config import Settings
+from .git_push import GitRepository
 from .incoming import IncomingRequest, detect_media_type, request_id, write_incoming_request
 from .kiro_runner import KiroRunner
 from .workflows import workflow_path
@@ -31,6 +32,7 @@ def process_file(
     media_type: str | None = typer.Option(None, "--media-type"),
 ) -> None:
     settings = _settings()
+    GitRepository(settings).assert_clean_for_capture()
     source = Path(path).resolve()
     detected = media_type or detect_media_type(source)
     request = IncomingRequest(

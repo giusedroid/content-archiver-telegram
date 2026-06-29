@@ -71,6 +71,29 @@ def test_git_commit_all_if_changed_skips_clean_repo(monkeypatch, tmp_path) -> No
     assert all("commit" not in call for call in calls)
 
 
+def test_git_assert_clean_for_capture_allows_clean_repo(monkeypatch, tmp_path) -> None:
+    def fake_run(args, **kwargs):
+        if args[:3] == ["git", "status", "--porcelain"]:
+            return _completed(args, stdout="")
+        raise AssertionError(args)
+
+    monkeypatch.setattr("content_archiver_telegram.git_push.subprocess.run", fake_run)
+
+    GitRepository(Settings(content_repo_path=tmp_path)).assert_clean_for_capture()
+
+
+def test_git_assert_clean_for_capture_rejects_dirty_repo(monkeypatch, tmp_path) -> None:
+    def fake_run(args, **kwargs):
+        if args[:3] == ["git", "status", "--porcelain"]:
+            return _completed(args, stdout="?? captures/partial/capture.md\n")
+        raise AssertionError(args)
+
+    monkeypatch.setattr("content_archiver_telegram.git_push.subprocess.run", fake_run)
+
+    with pytest.raises(GitPushError, match="uncommitted changes"):
+        GitRepository(Settings(content_repo_path=tmp_path)).assert_clean_for_capture()
+
+
 def test_git_push_uses_temporary_github_auth_header(monkeypatch, tmp_path) -> None:
     calls = []
 
