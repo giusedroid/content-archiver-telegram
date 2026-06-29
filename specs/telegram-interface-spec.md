@@ -19,15 +19,14 @@ This repository provides the Telegram surface for a Kiro-operated content archiv
 
 - Capture boundary classification.
 - Manifest semantics.
-- S3 upload implementation.
-- Media processing implementation.
-- Transcription implementation.
-- LanceDB indexing/search implementation.
+- Owning archive MCP tool implementation.
 - Direct editing of `captures/`, `todo/`, or `index/`.
 
 Those are owned by Kiro operating inside the content repository and by the content repository MCP tools.
 
-This repo may provide the executable implementation for those MCP tools as `content-archiver-mcp`, but the durable tool definitions and usage contract live in the content repository.
+The archive repository owns both the durable MCP definitions and the archive-scoped MCP
+tool implementation under its root `tools/` directory. This Telegram repo is only a
+compute host that can run those tools.
 
 ## Incoming Request Format
 
@@ -91,9 +90,10 @@ The Telegram interface must be runnable as a single portable Docker service.
 The container image must:
 
 - use `uv` to install the Python package from `pyproject.toml` and `uv.lock`
+- install all dependencies required by the archive repo MCP tools
 - install `kiro-cli` during the Docker build
 - install Git and `ffmpeg`
-- expose both `content-archiver-telegram` and `content-archiver-mcp` on `PATH`
+- provide Python and runtime dependencies needed by the archive repo MCP tools
 - run `content-archiver-telegram serve` by default
 - set `KIRO_CLI=kiro-cli`
 - set `CONTENT_REPO_PATH=/workspace/content-repo`
@@ -151,19 +151,14 @@ Search workflows must not push.
 
 ## MCP Runtime
 
-This package exposes:
-
-```text
-content-archiver-mcp
-```
-
 The content repo `.kiro/settings/mcp.json` should invoke its repo-local launcher over stdio:
 
 ```text
-python .kiro/mcp/content_archiver_tools.py
+python tools/content_archiver_mcp.py
 ```
 
-That launcher imports this package's MCP runtime. Tools exposed by the server:
+That launcher imports the archive repo's MCP runtime from `tools/content_archive_mcp/`.
+Tools exposed by the server:
 
 - `upload_original_to_s3`
 - `resize_image`

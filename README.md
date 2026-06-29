@@ -9,15 +9,9 @@ This repository is the Telegram ingress for the content archive. It is intention
 5. invoke Kiro headless with the content repository as the working directory
 6. return Kiro's concise result to Telegram
 
-The content repository owns the `.kiro` steering, workflow prompts, MCP tool definitions, captures, TODOs, and index files. This repo does not decide capture semantics.
-
-This repository also provides the runtime executable named by the content repo MCP definition:
-
-```text
-content-archiver-mcp
-```
-
-The MCP definitions remain in the content repo so humans and agents can inspect the tool contract from the workspace. This package only supplies the implementation.
+The content repository owns the `.kiro` steering, workflow prompts, MCP tool definitions,
+MCP implementation, captures, TODOs, and index files. This repo does not decide capture
+semantics and does not own archive-scoped tools.
 
 ## Architecture
 
@@ -79,6 +73,11 @@ uv run content-archiver-telegram search "Jeff Barr AWS London Summit"
 The Docker image follows the same headless Kiro pattern as `simple-kirolets`: it installs
 Python dependencies through `uv`, installs `kiro-cli`, runs Telegram polling as one
 process, and lets Kiro operate inside a mounted content repository.
+
+The archive repo owns the MCP tool code under `tools/`, but this Docker image installs the
+dependencies needed to run those tools: `mcp`, `boto3`, `Pillow`, `ffmpeg`, `markitdown`,
+`lancedb`, OpenAI-compatible clients, and related support libraries. The mounted archive
+repo should not have to run `uv sync` inside the container for normal bot operation.
 
 Build and start:
 
@@ -150,19 +149,20 @@ git -c http.https://github.com/.extraheader="AUTHORIZATION: Basic <token>" push 
 The token is passed through a temporary Git config entry for that one command and is not
 written into `.git/config`.
 
-Run the MCP server manually:
+Run the archive repo MCP server manually from the mounted content repo:
 
 ```bash
-uv run content-archiver-mcp
+cd ../content-archive-repo
+uv run content-archive-mcp --check
 ```
 
-Kiro normally starts the content repo launcher from `.kiro/settings/mcp.json`:
+Kiro starts the content repo MCP launcher from `.kiro/settings/mcp.json`:
 
 ```text
-python .kiro/mcp/content_archiver_tools.py
+python tools/content_archiver_mcp.py
 ```
 
-That launcher imports this package and starts the same MCP server.
+That launcher and the tool implementation live in the mounted content archive repo.
 
 ## Workflow Selection
 
@@ -182,7 +182,7 @@ Kiro is expected to read the workflow prompt, use the content repo MCP tools whe
 
 ## MCP Tool Runtime
 
-`content-archiver-mcp` exposes:
+The archive repo MCP server exposes:
 
 ```text
 upload_original_to_s3
@@ -196,4 +196,6 @@ index_lancedb
 semantic_search
 ```
 
-The tools are for external/heavy capabilities only. Kiro should use normal repository access for reading/writing files and Git operations.
+The tools are for external/heavy capabilities only. Kiro should use normal repository
+access for reading/writing files and Git operations. This Telegram repo supplies the Docker
+compute environment and dependencies; the archive repo supplies the MCP code.
