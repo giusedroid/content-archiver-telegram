@@ -27,6 +27,8 @@ This repository provides the Telegram surface for a Kiro-operated content archiv
 
 Those are owned by Kiro operating inside the content repository and by the content repository MCP tools.
 
+This repo may provide the executable implementation for those MCP tools as `content-archiver-mcp`, but the durable tool definitions and usage contract live in the content repository.
+
 ## Incoming Request Format
 
 Each incoming request is written as:
@@ -81,6 +83,26 @@ The prompt includes:
 - expected JSON result shape
 
 Kiro runs with `cwd` set to the content repository root so it behaves like Kiro IDE opened on that repo.
+
+## MCP Runtime
+
+This package exposes:
+
+```text
+content-archiver-mcp
+```
+
+The content repo `.kiro/mcp/servers.yml` should invoke this command over stdio. Tools exposed by the server:
+
+- `upload_original_to_s3`
+- `resize_image`
+- `extract_video_frames`
+- `extract_audio`
+- `transcribe_audio`
+- `pdf_to_markdown`
+- `crawl_url_to_markdown`
+- `index_lancedb`
+- `semantic_search`
 
 ## Expected Kiro Result
 

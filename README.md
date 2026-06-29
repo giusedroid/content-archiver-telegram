@@ -11,6 +11,14 @@ This repository is the Telegram ingress for the content archive. It is intention
 
 The content repository owns the `.kiro` steering, workflow prompts, MCP tool definitions, captures, TODOs, and index files. This repo does not decide capture semantics.
 
+This repository also provides the runtime executable named by the content repo MCP definition:
+
+```text
+content-archiver-mcp
+```
+
+The MCP definitions remain in the content repo so humans and agents can inspect the tool contract from the workspace. This package only supplies the implementation.
+
 ## Architecture
 
 ```text
@@ -66,6 +74,14 @@ Run semantic search through Kiro:
 uv run content-archiver-telegram search "Jeff Barr AWS London Summit"
 ```
 
+Run the MCP server manually:
+
+```bash
+uv run content-archiver-mcp
+```
+
+Kiro normally starts this command from the content repo using `.kiro/mcp/servers.yml`.
+
 ## Workflow Selection
 
 The Telegram interface maps media types to content-repo workflows:
@@ -81,3 +97,21 @@ search -> .kiro/workflows/search.md
 ```
 
 Kiro is expected to read the workflow prompt, use the content repo MCP tools where needed, edit files directly, commit the result, and return JSON with a Telegram-friendly message.
+
+## MCP Tool Runtime
+
+`content-archiver-mcp` exposes:
+
+```text
+upload_original_to_s3
+resize_image
+extract_video_frames
+extract_audio
+transcribe_audio
+pdf_to_markdown
+crawl_url_to_markdown
+index_lancedb
+semantic_search
+```
+
+The tools are for external/heavy capabilities only. Kiro should use normal repository access for reading/writing files and Git operations.
