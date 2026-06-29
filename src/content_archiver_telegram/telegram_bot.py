@@ -101,7 +101,12 @@ async def _download(context: Any, file_id: str, settings: Settings, filename: st
     settings.telegram_download_dir.mkdir(parents=True, exist_ok=True)
     target = settings.telegram_download_dir / Path(filename).name
     telegram_file = await context.bot.get_file(file_id)
-    with tempfile.NamedTemporaryFile(delete=False) as temp:
+    with tempfile.NamedTemporaryFile(
+        dir=settings.telegram_download_dir,
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as temp:
         temp_path = Path(temp.name)
     try:
         await telegram_file.download_to_drive(custom_path=temp_path)

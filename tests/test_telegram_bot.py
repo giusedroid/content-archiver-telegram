@@ -1,0 +1,34 @@
+from __future__ import annotations
+
+import asyncio
+from types import SimpleNamespace
+
+from content_archiver_telegram.config import Settings
+from content_archiver_telegram.telegram_bot import _download
+
+
+class FakeTelegramFile:
+    def __init__(self) -> None:
+        self.download_path = None
+
+    async def download_to_drive(self, custom_path) -> None:
+        self.download_path = custom_path
+        custom_path.write_bytes(b"telegram-file")
+
+
+def test_download_uses_temp_file_inside_download_directory(tmp_path) -> None:
+    telegram_file = FakeTelegramFile()
+
+    async def get_file(file_id: str):
+        assert file_id == "file-id"
+        return telegram_file
+
+    context = SimpleNamespace(bot=SimpleNamespace(get_file=get_file))
+    settings = Settings(telegram_download_dir=tmp_path).resolve_paths()
+
+    target = asyncio.run(_download(context, "file-id", settings, "photo.jpg"))
+
+    assert target == tmp_path / "photo.jpg"
+    assert target.read_bytes() == b"telegram-file"
+    assert telegram_file.download_path.parent == tmp_path
+    assert not telegram_file.download_path.exists()
