@@ -116,6 +116,39 @@ The default host content repo path is:
 The default AWS config mount is an empty placeholder directory so local dry-run mode works
 without host AWS credentials.
 
+## Git Push Runtime
+
+Kiro is responsible for editing files and creating commits inside the content repository.
+The Telegram runtime is responsible for optional remote push behavior.
+
+Environment variables:
+
+```env
+GIT_PUSH=false
+GIT_REMOTE=origin
+GIT_BRANCH=main
+GITHUB_USERNAME=giusedroid
+GITHUB_TOKEN=
+```
+
+When `GIT_PUSH=true`, `GITHUB_TOKEN` is required. The expected token is a fine-grained
+GitHub PAT scoped to the content repository with at least Metadata read and Contents
+read/write.
+
+Capture workflow push procedure:
+
+1. Snapshot `HEAD` in the content repository before invoking Kiro.
+2. Invoke Kiro with the content repository as `cwd`.
+3. Parse Kiro's JSON response.
+4. Snapshot `HEAD` again.
+5. If `HEAD` changed and `GIT_PUSH=true`, push `HEAD:<GIT_BRANCH>` to `<GIT_REMOTE>`.
+6. Use a temporary Git HTTP auth header for the push command.
+7. Do not write the GitHub token into `.git/config`.
+8. Do not pass `GITHUB_TOKEN` into the Kiro subprocess environment.
+9. Redact both raw tokens and temporary auth headers from runtime errors.
+
+Search workflows must not push.
+
 ## MCP Runtime
 
 This package exposes:

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Settings
+from .git_push import GitRepository, attach_push_result
 
 
 class KiroRunError(RuntimeError):
@@ -28,8 +29,14 @@ class KiroRunner:
             workflow_text=workflow_text,
             content_repo_path=self.settings.content_repo_path,
         )
+        git = GitRepository(self.settings)
+        before_head = git.current_head() if self.settings.git_push else None
         output = self._run(prompt)
-        return _parse_json_output(output)
+        result = _parse_json_output(output)
+        if self.settings.git_push:
+            push = git.push_if_head_changed(before_head=before_head)
+            result = attach_push_result(result, push)
+        return result
 
     def run_search(self, *, query: str) -> dict[str, Any]:
         self.settings.validate_kiro()
@@ -47,6 +54,7 @@ class KiroRunner:
         env = os.environ.copy()
         if self.settings.kiro_api_key:
             env["KIRO_API_KEY"] = self.settings.kiro_api_key
+        env.pop("GITHUB_TOKEN", None)
         env["NO_COLOR"] = "1"
         env["TERM"] = "dumb"
 
@@ -130,6 +138,9 @@ def _parse_json_output(output: str) -> dict[str, Any]:
 
 
 def _redact(text: str, settings: Settings) -> str:
+    redacted = text
     if settings.kiro_api_key:
-        return text.replace(settings.kiro_api_key, "***")
-    return text
+        redacted = redacted.replace(settings.kiro_api_key, "***")
+    if settings.github_token:
+        redacted = redacted.replace(settings.github_token, "***")
+    return redacted

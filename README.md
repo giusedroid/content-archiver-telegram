@@ -119,6 +119,37 @@ TELEGRAM_DOWNLOAD_DIR=/app/.content-archiver-telegram/downloads
 
 Only run one polling process for a Telegram bot token at a time.
 
+## Git Push
+
+Kiro is responsible for editing and committing inside the mounted content repo. The
+Telegram runtime can push deterministically after Kiro succeeds:
+
+```env
+GIT_PUSH=true
+GIT_REMOTE=origin
+GIT_BRANCH=main
+GITHUB_USERNAME=giusedroid
+GITHUB_TOKEN=github_pat_xxxxx
+```
+
+Use a fine-grained GitHub PAT scoped only to the content repository. For direct archive
+pushes, start with:
+
+```text
+Metadata: read
+Contents: read/write
+```
+
+The runtime snapshots `HEAD` before Kiro runs. After Kiro returns valid JSON, it checks
+`HEAD` again. If the commit changed and `GIT_PUSH=true`, it runs:
+
+```text
+git -c http.https://github.com/.extraheader="AUTHORIZATION: Basic <token>" push <remote> HEAD:<branch>
+```
+
+The token is passed through a temporary Git config entry for that one command and is not
+written into `.git/config`.
+
 Run the MCP server manually:
 
 ```bash

@@ -37,6 +37,11 @@ class Settings:
     kiro_api_key: str | None = None
     kiro_trust_tools: str = "read,grep,write,bash"
     kiro_timeout_seconds: int = 600
+    git_push: bool = False
+    git_remote: str = "origin"
+    git_branch: str = "main"
+    github_token: str | None = None
+    github_username: str = "x-access-token"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -53,6 +58,12 @@ class Settings:
             kiro_trust_tools=os.getenv("KIRO_TRUST_TOOLS", "read,grep,write,bash").strip()
             or "read,grep,write,bash",
             kiro_timeout_seconds=int(os.getenv("KIRO_TIMEOUT_SECONDS", "600")),
+            git_push=_bool_env(os.getenv("GIT_PUSH"), False),
+            git_remote=os.getenv("GIT_REMOTE", "origin").strip() or "origin",
+            git_branch=os.getenv("GIT_BRANCH", "main").strip() or "main",
+            github_token=os.getenv("GITHUB_TOKEN") or None,
+            github_username=os.getenv("GITHUB_USERNAME", "x-access-token").strip()
+            or "x-access-token",
         ).resolve_paths()
 
     def resolve_paths(self) -> "Settings":
@@ -71,3 +82,13 @@ class Settings:
         if self.kiro_cli:
             return
         raise RuntimeError("KIRO_CLI is required to run content repository workflows.")
+
+    def validate_git_push(self) -> None:
+        if not self.git_push:
+            return
+        if not self.github_token:
+            raise RuntimeError("GITHUB_TOKEN is required when GIT_PUSH=true.")
+        if not self.git_remote:
+            raise RuntimeError("GIT_REMOTE is required when GIT_PUSH=true.")
+        if not self.git_branch:
+            raise RuntimeError("GIT_BRANCH is required when GIT_PUSH=true.")

@@ -15,3 +15,24 @@ def test_telegram_security_requires_allowlist() -> None:
 
     Settings(telegram_allowed_user_ids={1}).validate_telegram_security()
     Settings(telegram_allow_all_users=True).validate_telegram_security()
+
+
+def test_git_push_settings_parse_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("GIT_PUSH", "true")
+    monkeypatch.setenv("GIT_REMOTE", "archive")
+    monkeypatch.setenv("GIT_BRANCH", "captures")
+    monkeypatch.setenv("GITHUB_TOKEN", "github_pat_secret")
+    monkeypatch.setenv("GITHUB_USERNAME", "giusedroid")
+
+    settings = Settings.from_env()
+
+    assert settings.git_push is True
+    assert settings.git_remote == "archive"
+    assert settings.git_branch == "captures"
+    assert settings.github_token == "github_pat_secret"
+    assert settings.github_username == "giusedroid"
+
+
+def test_git_push_requires_token_when_enabled() -> None:
+    with pytest.raises(RuntimeError, match="GITHUB_TOKEN"):
+        Settings(git_push=True).validate_git_push()

@@ -10,3 +10,5 @@ build/
 
 # Runtime downloads before handoff into the content repo.
 .content-archiver-telegram/
+
+.env
