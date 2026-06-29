@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Settings
-from .git_push import GitRepository, attach_push_result
+from .git_push import GitRepository, attach_commit_result, attach_push_result
 
 
 class KiroRunError(RuntimeError):
@@ -30,9 +30,17 @@ class KiroRunner:
             content_repo_path=self.settings.content_repo_path,
         )
         git = GitRepository(self.settings)
-        before_head = git.current_head() if self.settings.git_push else None
+        before_head = git.current_head()
         output = self._run(prompt)
         result = _parse_json_output(output)
+        commit = git.commit_all_if_changed(
+            message=_commit_message(
+                result=result,
+                request_path=request_path,
+                workflow_path=workflow_path,
+            )
+        )
+        result = attach_commit_result(result, commit)
         if self.settings.git_push:
             push = git.push_if_head_changed(before_head=before_head)
             result = attach_push_result(result, push)
@@ -63,8 +71,10 @@ class KiroRunner:
             "chat",
             "--no-interactive",
             f"--trust-tools={self.settings.kiro_trust_tools}",
-            prompt,
         ]
+        if self.settings.kiro_require_mcp_startup:
+            args.append("--require-mcp-startup")
+        args.append(prompt)
         try:
             completed = subprocess.run(
                 args,
@@ -82,7 +92,9 @@ class KiroRunner:
 
         output = (completed.stdout or "") + (completed.stderr or "")
         if completed.returncode != 0:
-            raise KiroRunError(_redact(f"Kiro failed with exit {completed.returncode}:\n{output}", self.settings))
+            raise KiroRunError(
+                _redact(f"Kiro failed with exit {completed.returncode}:\n{output}", self.settings)
+            )
         return _redact(output, self.settings)
 
 
@@ -111,6 +123,26 @@ def _workflow_prompt(
         '  "paths": ["optional/path.md"]\n'
         "}\n"
     )
+
+
+def _commit_message(
+    *,
+    result: dict[str, Any],
+    request_path: Path,
+    workflow_path: Path,
+) -> str:
+    capture_id = str(result.get("capture_id") or "").strip()
+    media_type = _media_type_from_workflow(workflow_path)
+    if capture_id:
+        return f"capture: add {capture_id} {media_type}"
+    return f"capture: add inbox item {request_path.parent.name}"
+
+
+def _media_type_from_workflow(workflow_path: Path) -> str:
+    name = workflow_path.stem
+    if name.startswith("capture-"):
+        return name.removeprefix("capture-")
+    return "item"
 
 
 def _parse_json_output(output: str) -> dict[str, Any]:

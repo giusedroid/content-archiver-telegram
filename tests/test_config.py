@@ -36,3 +36,15 @@ def test_git_push_settings_parse_from_env(monkeypatch) -> None:
 def test_git_push_requires_token_when_enabled() -> None:
     with pytest.raises(RuntimeError, match="GITHUB_TOKEN"):
         Settings(git_push=True).validate_git_push()
+
+
+def test_kiro_requires_mcp_startup_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("KIRO_REQUIRE_MCP_STARTUP", raising=False)
+
+    assert Settings.from_env().kiro_require_mcp_startup is True
+
+
+def test_kiro_require_mcp_startup_can_be_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("KIRO_REQUIRE_MCP_STARTUP", "false")
+
+    assert Settings.from_env().kiro_require_mcp_startup is False

@@ -21,6 +21,15 @@ class GitPushResult:
     after_head: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class GitCommitResult:
+    changed: bool
+    committed: bool
+    before_head: str | None
+    after_head: str | None
+    message: str | None
+
+
 @dataclass(slots=True)
 class GitRepository:
     settings: Settings
@@ -30,6 +39,31 @@ class GitRepository:
         if completed.returncode != 0:
             return None
         return completed.stdout.strip() or None
+
+    def has_changes(self) -> bool:
+        completed = self._git("status", "--porcelain", check=True)
+        return bool(completed.stdout.strip())
+
+    def commit_all_if_changed(self, *, message: str) -> GitCommitResult:
+        before_head = self.current_head()
+        if not self.has_changes():
+            return GitCommitResult(
+                changed=False,
+                committed=False,
+                before_head=before_head,
+                after_head=before_head,
+                message=None,
+            )
+
+        self._git("add", "-A", check=True)
+        self._git("commit", "-m", message, check=True)
+        return GitCommitResult(
+            changed=True,
+            committed=True,
+            before_head=before_head,
+            after_head=self.current_head(),
+            message=message,
+        )
 
     def push_if_head_changed(self, *, before_head: str | None) -> GitPushResult:
         if not self.settings.git_push:
@@ -92,6 +126,19 @@ class GitRepository:
         credential = f"{self.settings.github_username}:{token}".encode("utf-8")
         encoded = base64.b64encode(credential).decode("ascii")
         return f"AUTHORIZATION: Basic {encoded}"
+
+
+def attach_commit_result(result: dict, commit: GitCommitResult) -> dict:
+    result["git_commit"] = {
+        "changed": commit.changed,
+        "committed": commit.committed,
+        "before_head": commit.before_head,
+        "after_head": commit.after_head,
+        "message": commit.message,
+    }
+    if commit.committed and isinstance(result.get("message"), str):
+        result["message"] = f"{result['message']} Committed as `{commit.message}`."
+    return result
 
 
 def attach_push_result(result: dict, push: GitPushResult) -> dict:

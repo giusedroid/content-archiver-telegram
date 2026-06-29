@@ -12,6 +12,8 @@ This repository provides the Telegram surface for a Kiro-operated content archiv
 - Write a durable `request.yml` describing the incoming item.
 - Select a workflow prompt from the content repository `.kiro/workflows/` directory based on media type.
 - Invoke Kiro headless with the content repository as `cwd`.
+- Commit successful capture changes in the content repository after Kiro returns valid JSON.
+- Optionally push the new commit to the configured remote.
 - Relay Kiro's result back to Telegram.
 - Provide `/search` as a Kiro-mediated semantic search capability.
 
@@ -20,7 +22,7 @@ This repository provides the Telegram surface for a Kiro-operated content archiv
 - Capture boundary classification.
 - Manifest semantics.
 - Owning archive MCP tool implementation.
-- Direct editing of `captures/`, `todo/`, or `index/`.
+- Direct semantic editing of `captures/`, `todo/`, or `index/`.
 
 Those are owned by Kiro operating inside the content repository and by the content repository MCP tools.
 
@@ -71,7 +73,7 @@ search -> .kiro/workflows/search.md
 The interface invokes Kiro as:
 
 ```text
-kiro-cli chat --no-interactive --trust-tools=<KIRO_TRUST_TOOLS> <prompt>
+kiro-cli chat --no-interactive --trust-tools=<KIRO_TRUST_TOOLS> --require-mcp-startup <prompt>
 ```
 
 The prompt includes:
@@ -82,6 +84,9 @@ The prompt includes:
 - expected JSON result shape
 
 Kiro runs with `cwd` set to the content repository root so it behaves like Kiro IDE opened on that repo.
+`KIRO_REQUIRE_MCP_STARTUP=true` is the default. If MCP startup fails, the Telegram
+interface should fail the capture instead of allowing Kiro to write partial "MCP tools
+unavailable" notes. The switch may be set to `false` only for deliberate local debugging.
 
 ## Docker Runtime
 
@@ -133,10 +138,11 @@ The Docker image must not own or vendor archive MCP Python dependencies. The arc
 owns `tools/pyproject.toml` and `tools/uv.lock`; the Telegram container only supplies the
 compute environment that syncs and runs that project.
 
-## Git Push Runtime
+## Commit And Push Runtime
 
-Kiro is responsible for editing files and creating commits inside the content repository.
-The Telegram runtime is responsible for optional remote push behavior.
+Kiro is responsible for editing files inside the content repository. The Telegram runtime
+is responsible for creating the local commit after a valid capture result and for optional
+remote push behavior.
 
 Environment variables:
 
@@ -157,14 +163,14 @@ Capture workflow push procedure:
 1. Snapshot `HEAD` in the content repository before invoking Kiro.
 2. Invoke Kiro with the content repository as `cwd`.
 3. Parse Kiro's JSON response.
-4. Snapshot `HEAD` again.
+4. If the content repo has changes, run `git add -A` and `git commit -m "capture: add <capture-id> <media-type>"`.
 5. If `HEAD` changed and `GIT_PUSH=true`, push `HEAD:<GIT_BRANCH>` to `<GIT_REMOTE>`.
 6. Use a temporary Git HTTP auth header for the push command.
 7. Do not write the GitHub token into `.git/config`.
 8. Do not pass `GITHUB_TOKEN` into the Kiro subprocess environment.
 9. Redact both raw tokens and temporary auth headers from runtime errors.
 
-Search workflows must not push.
+Search workflows must not commit or push.
 
 ## MCP Runtime
 

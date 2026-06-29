@@ -7,7 +7,9 @@ This repository is the Telegram ingress for the content archive. It is intention
 3. write an incoming request into the content repository
 4. select the correct Kiro workflow prompt by media type
 5. invoke Kiro headless with the content repository as the working directory
-6. return Kiro's concise result to Telegram
+6. commit successful capture changes in the content repository
+7. optionally push the new commit
+8. return Kiro's concise result to Telegram
 
 The content repository owns the `.kiro` steering, workflow prompts, MCP tool definitions,
 MCP implementation, captures, TODOs, and index files. This repo does not decide capture
@@ -23,6 +25,8 @@ Telegram
   -> .kiro/workflows/<media-workflow>.md
   -> content-repo MCP tools for AWS/media/transcription/search
   -> captures/, todo/, index/
+  -> git commit
+  -> optional git push
   -> Telegram reply
 ```
 
@@ -120,16 +124,18 @@ The container sets:
 CONTENT_REPO_PATH=/workspace/content-repo
 KIRO_CLI=kiro-cli
 TELEGRAM_DOWNLOAD_DIR=/app/.content-archiver-telegram/downloads
+KIRO_REQUIRE_MCP_STARTUP=true
 ARCHIVE_TOOLS_SYNC=true
 ARCHIVE_TOOLS_SYNC_ARGS=--locked --no-dev
 ```
 
 Only run one polling process for a Telegram bot token at a time.
 
-## Git Push
+## Commit And Push
 
-Kiro is responsible for editing and committing inside the mounted content repo. The
-Telegram runtime can push deterministically after Kiro succeeds:
+Kiro is responsible for editing files inside the mounted content repo. After Kiro returns
+valid JSON, the Telegram runtime stages and commits any content repo changes. It can also
+push deterministically when enabled:
 
 ```env
 GIT_PUSH=true
@@ -147,8 +153,14 @@ Metadata: read
 Contents: read/write
 ```
 
-The runtime snapshots `HEAD` before Kiro runs. After Kiro returns valid JSON, it checks
-`HEAD` again. If the commit changed and `GIT_PUSH=true`, it runs:
+The runtime snapshots `HEAD` before Kiro runs. After Kiro returns valid JSON, it runs:
+
+```text
+git add -A
+git commit -m "capture: add <capture-id> <media-type>"
+```
+
+If the commit changed and `GIT_PUSH=true`, it then runs:
 
 ```text
 git -c http.https://github.com/.extraheader="AUTHORIZATION: Basic <token>" push <remote> HEAD:<branch>
@@ -171,6 +183,8 @@ python tools/content_archiver_mcp.py
 ```
 
 That launcher and the tool implementation live in the mounted content archive repo.
+By default, the Telegram runtime invokes Kiro with `--require-mcp-startup` so broken or
+missing MCP tools fail loudly instead of producing partial capture notes.
 
 ## Workflow Selection
 
@@ -186,7 +200,9 @@ text -> .kiro/workflows/capture-text.md
 search -> .kiro/workflows/search.md
 ```
 
-Kiro is expected to read the workflow prompt, use the content repo MCP tools where needed, edit files directly, commit the result, and return JSON with a Telegram-friendly message.
+Kiro is expected to read the workflow prompt, use the content repo MCP tools where needed,
+edit files directly, and return JSON with a Telegram-friendly message. The Telegram runtime
+creates the commit after a successful Kiro result.
 
 ## MCP Tool Runtime
 
