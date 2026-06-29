@@ -7,8 +7,8 @@ This repository is the Telegram ingress for the content archive. It is intention
 3. write an incoming request into the content repository
 4. select the correct Kiro workflow prompt by media type
 5. invoke Kiro headless with the content repository as the working directory
-6. commit successful capture changes in the content repository
-7. optionally push the new commit
+6. commit successful capture changes
+7. optionally push directly or open a pull request
 8. return Kiro's concise result to Telegram
 
 The content repository owns the `.kiro` steering, workflow prompts, MCP tool definitions,
@@ -26,7 +26,7 @@ Telegram
   -> content-repo MCP tools for AWS/media/transcription/search
   -> captures/, todo/, index/
   -> git commit
-  -> optional git push
+  -> optional git push or pull request
   -> Telegram reply
 ```
 
@@ -131,13 +131,20 @@ ARCHIVE_TOOLS_SYNC_ARGS=--locked --no-dev
 
 Only run one polling process for a Telegram bot token at a time.
 
-## Commit And Push
+## Delivery Modes
 
-Kiro is responsible for editing files inside the mounted content repo. Before accepting a
-new capture, the Telegram runtime requires the content repo worktree to be clean; this
-prevents a later successful capture from accidentally committing older partial output.
-After Kiro returns valid JSON, the runtime stages and commits any content repo changes. It
-can also push deterministically when enabled:
+Kiro is responsible for editing files. After Kiro returns valid JSON, the Telegram runtime
+stages and commits the changed files.
+
+Direct commit mode is the default:
+
+```env
+CAPTURE_DELIVERY_MODE=commit
+```
+
+In direct commit mode, the mounted content repo worktree must be clean before accepting a
+new capture. This prevents a later successful capture from accidentally committing older
+partial output. Direct mode can also push deterministically when enabled:
 
 ```env
 GIT_PUSH=true
@@ -147,8 +154,30 @@ GITHUB_USERNAME=giusedroid
 GITHUB_TOKEN=github_pat_xxxxx
 ```
 
+Pull request mode is the concurrency path:
+
+```env
+CAPTURE_DELIVERY_MODE=pull-request
+GIT_WORKTREE_ROOT=/app/.content-archiver-telegram/worktrees
+GIT_BRANCH_PREFIX=capture
+GIT_REMOTE=origin
+GIT_BRANCH=main
+GITHUB_REPOSITORY=giusedroid/content-archive-repo
+GITHUB_TOKEN=github_pat_xxxxx
+```
+
+In pull request mode, each request gets an isolated git worktree and branch:
+
+```text
+capture/<request-id>
+```
+
+The runtime runs Kiro inside that worktree, commits the result, pushes the request branch,
+and opens a GitHub pull request. That lets multiple Telegram requests run without sharing
+one mutable checkout.
+
 Use a fine-grained GitHub PAT scoped only to the content repository. For direct archive
-pushes, start with:
+pushes or pull-request mode, start with:
 
 ```text
 Metadata: read
@@ -170,6 +199,14 @@ git -c http.https://github.com/.extraheader="AUTHORIZATION: Basic <token>" push 
 
 The token is passed through a temporary Git config entry for that one command and is not
 written into `.git/config`.
+
+The bot also supports:
+
+```text
+/status <request-id>
+```
+
+In pull request mode, this looks up the request branch and returns the matching PR URL.
 
 Run the archive repo MCP server manually from the mounted content repo:
 

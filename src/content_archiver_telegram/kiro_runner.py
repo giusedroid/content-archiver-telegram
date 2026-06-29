@@ -9,7 +9,14 @@ from pathlib import Path
 from typing import Any
 
 from .config import Settings
-from .git_push import GitRepository, attach_commit_result, attach_push_result
+from .git_push import (
+    GitPullRequestResult,
+    GitRepository,
+    attach_commit_result,
+    attach_pull_request_result,
+    attach_push_result,
+    request_branch_name,
+)
 
 
 class KiroRunError(RuntimeError):
@@ -41,7 +48,20 @@ class KiroRunner:
             )
         )
         result = attach_commit_result(result, commit)
-        if self.settings.git_push:
+        if self.settings.uses_pull_requests:
+            branch = self.settings.git_capture_branch or request_branch_name(
+                self.settings.git_branch_prefix,
+                request_path.parent.name,
+            )
+            pull_request = _create_pull_request(
+                git=git,
+                result=result,
+                request_path=request_path,
+                branch=branch,
+                commit_created=commit.committed,
+            )
+            result = attach_pull_request_result(result, pull_request)
+        elif self.settings.git_push:
             push = git.push_if_head_changed(before_head=before_head)
             result = attach_push_result(result, push)
         return result
@@ -143,6 +163,50 @@ def _media_type_from_workflow(workflow_path: Path) -> str:
     if name.startswith("capture-"):
         return name.removeprefix("capture-")
     return "item"
+
+
+def _create_pull_request(
+    *,
+    git: GitRepository,
+    result: dict[str, Any],
+    request_path: Path,
+    branch: str,
+    commit_created: bool,
+) -> GitPullRequestResult:
+    if not commit_created:
+        return GitPullRequestResult(
+            enabled=True,
+            pushed=False,
+            created=False,
+            branch=branch,
+            base=git.settings.git_branch,
+            url=None,
+            number=None,
+        )
+    git.push_branch(branch=branch)
+    return git.create_pull_request(
+        branch=branch,
+        title=_pull_request_title(result=result, request_id=request_path.parent.name),
+        body=_pull_request_body(result=result, request_path=request_path),
+    )
+
+
+def _pull_request_title(*, result: dict[str, Any], request_id: str) -> str:
+    capture_id = str(result.get("capture_id") or "").strip()
+    if capture_id:
+        return f"Capture {capture_id} from {request_id}"
+    return f"Capture inbox item {request_id}"
+
+
+def _pull_request_body(*, result: dict[str, Any], request_path: Path) -> str:
+    message = str(result.get("message") or "Kiro completed the capture workflow.")
+    paths = result.get("paths") if isinstance(result.get("paths"), list) else []
+    path_lines = "\n".join(f"- `{path}`" for path in paths) or "- No paths reported."
+    return (
+        f"Request: `{request_path.parent.name}`\n\n"
+        f"Kiro result:\n\n{message}\n\n"
+        f"Reported paths:\n\n{path_lines}\n"
+    )
 
 
 def _parse_json_output(output: str) -> dict[str, Any]:

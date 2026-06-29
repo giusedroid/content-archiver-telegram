@@ -8,15 +8,17 @@ This repository provides the Telegram surface for a Kiro-operated content archiv
 
 - Authenticate Telegram users with an allowlist.
 - Download Telegram files into a local runtime cache.
-- Refuse new captures when the content repository has pre-existing uncommitted changes.
+- Refuse new direct-mode captures when the content repository has pre-existing uncommitted changes.
+- In pull-request mode, create an isolated git worktree and request branch per capture.
 - Copy or move incoming files into the content repository under `.content-archiver/incoming/<request-id>/`.
 - Write a durable `request.yml` describing the incoming item.
 - Select a workflow prompt from the content repository `.kiro/workflows/` directory based on media type.
 - Invoke Kiro headless with the content repository as `cwd`.
 - Commit successful capture changes in the content repository after Kiro returns valid JSON.
-- Optionally push the new commit to the configured remote.
+- Optionally push directly or push a request branch and open a GitHub pull request.
 - Relay Kiro's result back to Telegram.
 - Provide `/search` as a Kiro-mediated semantic search capability.
+- Provide `/status <request-id>` to look up request pull requests.
 
 ## Non-Responsibilities
 
@@ -139,27 +141,36 @@ The Docker image must not own or vendor archive MCP Python dependencies. The arc
 owns `tools/pyproject.toml` and `tools/uv.lock`; the Telegram container only supplies the
 compute environment that syncs and runs that project.
 
-## Commit And Push Runtime
+## Delivery Runtime
 
 Kiro is responsible for editing files inside the content repository. The Telegram runtime
-is responsible for creating the local commit after a valid capture result and for optional
-remote push behavior.
+is responsible for creating the local commit after a valid capture result. Delivery is
+controlled by `CAPTURE_DELIVERY_MODE`.
 
 Environment variables:
 
 ```env
+CAPTURE_DELIVERY_MODE=commit
 GIT_PUSH=false
 GIT_REMOTE=origin
 GIT_BRANCH=main
+GIT_WORKTREE_ROOT=.content-archiver-telegram/worktrees
+GIT_BRANCH_PREFIX=capture
 GITHUB_USERNAME=giusedroid
 GITHUB_TOKEN=
+GITHUB_REPOSITORY=
 ```
 
-When `GIT_PUSH=true`, `GITHUB_TOKEN` is required. The expected token is a fine-grained
-GitHub PAT scoped to the content repository with at least Metadata read and Contents
-read/write.
+Supported modes:
 
-Capture workflow push procedure:
+- `commit`: use the mounted content repo checkout directly.
+- `pull-request`: create a per-request git worktree, branch, commit, push, and GitHub PR.
+
+When `GIT_PUSH=true` or `CAPTURE_DELIVERY_MODE=pull-request`, `GITHUB_TOKEN` is required.
+The expected token is a fine-grained GitHub PAT scoped to the content repository with at
+least Metadata read and Contents read/write.
+
+Direct commit procedure:
 
 1. Verify the content repository worktree is clean before writing the new incoming request.
 2. Snapshot `HEAD` in the content repository before invoking Kiro.
@@ -171,6 +182,17 @@ Capture workflow push procedure:
 8. Do not write the GitHub token into `.git/config`.
 9. Do not pass `GITHUB_TOKEN` into the Kiro subprocess environment.
 10. Redact both raw tokens and temporary auth headers from runtime errors.
+
+Pull request procedure:
+
+1. Create branch `capture/<request-id>` from `GIT_BRANCH`.
+2. Create a git worktree under `GIT_WORKTREE_ROOT/<request-id>`.
+3. Write `.content-archiver/incoming/<request-id>/request.yml` inside that worktree.
+4. Invoke Kiro with the request worktree as `cwd`.
+5. Commit changed files in that worktree.
+6. Push `HEAD:refs/heads/capture/<request-id>` to `GIT_REMOTE`.
+7. Open a pull request from `capture/<request-id>` into `GIT_BRANCH`.
+8. Reply to Telegram with the request id, Kiro summary, proposed location, and PR URL.
 
 Search workflows must not commit or push.
 

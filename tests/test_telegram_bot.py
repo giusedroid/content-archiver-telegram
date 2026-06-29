@@ -4,7 +4,8 @@ import asyncio
 from types import SimpleNamespace
 
 from content_archiver_telegram.config import Settings
-from content_archiver_telegram.telegram_bot import _download
+from content_archiver_telegram.incoming import IncomingRequest
+from content_archiver_telegram.telegram_bot import _download, _intro_message, _result_message
 
 
 class FakeTelegramFile:
@@ -32,3 +33,33 @@ def test_download_uses_temp_file_inside_download_directory(tmp_path) -> None:
     assert target.read_bytes() == b"telegram-file"
     assert telegram_file.download_path.parent == tmp_path
     assert not telegram_file.download_path.exists()
+
+
+def test_intro_message_describes_request_and_media_plan() -> None:
+    request = IncomingRequest(
+        id="2026-06-29-telegram-12345678",
+        media_type="image",
+        caption="AWS London Summit",
+    )
+
+    message = _intro_message(request)
+
+    assert "12345678" in message
+    assert "`image` capture" in message
+    assert "create a preview" in message
+
+
+def test_result_message_includes_pr_url() -> None:
+    request = IncomingRequest(id="2026-06-29-telegram-12345678", media_type="image")
+    settings = Settings(capture_delivery_mode="pull-request")
+    result = {
+        "message": "Archived under captures/aws-london.",
+        "capture_id": "aws-london",
+        "git_pr": {"url": "https://github.com/o/r/pull/9"},
+    }
+
+    message = _result_message(request, result, settings)
+
+    assert "Kiro summary: Archived under captures/aws-london." in message
+    assert "`captures/aws-london/`" in message
+    assert "https://github.com/o/r/pull/9" in message

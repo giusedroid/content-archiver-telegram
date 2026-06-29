@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 import base64
+import json
+import re
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from .config import Settings
 
@@ -30,9 +37,25 @@ class GitCommitResult:
     message: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class GitPullRequestResult:
+    enabled: bool
+    pushed: bool
+    created: bool
+    branch: str
+    base: str
+    url: str | None
+    number: int | None
+
+
 @dataclass(slots=True)
 class GitRepository:
     settings: Settings
+    repo_path: Path | None = None
+
+    @property
+    def path(self) -> Path:
+        return self.repo_path or self.settings.content_repo_path
 
     def current_head(self) -> str | None:
         completed = self._git("rev-parse", "--verify", "HEAD", check=False)
@@ -50,6 +73,23 @@ class GitRepository:
                 "Content repository has uncommitted changes. Commit, push, or clean the "
                 "content repo before processing another capture."
             )
+
+    def create_capture_worktree(self, *, request_id: str) -> tuple[Path, str]:
+        branch = request_branch_name(self.settings.git_branch_prefix, request_id)
+        worktree_path = self.settings.git_worktree_root / safe_path_name(request_id)
+        if worktree_path.exists():
+            raise GitPushError(f"Capture worktree already exists: {worktree_path}")
+        worktree_path.parent.mkdir(parents=True, exist_ok=True)
+        self._git(
+            "worktree",
+            "add",
+            "-b",
+            branch,
+            str(worktree_path),
+            self.settings.git_branch,
+            check=True,
+        )
+        return worktree_path, branch
 
     def commit_all_if_changed(self, *, message: str) -> GitCommitResult:
         before_head = self.current_head()
@@ -112,10 +152,78 @@ class GitRepository:
             after_head=after_head,
         )
 
+    def push_branch(self, *, branch: str) -> None:
+        self.settings.validate_delivery_mode()
+        self._git(
+            "-c",
+            f"http.https://github.com/.extraheader={self._github_auth_header()}",
+            "push",
+            self.settings.git_remote,
+            f"HEAD:refs/heads/{branch}",
+            check=True,
+        )
+
+    def create_pull_request(
+        self,
+        *,
+        branch: str,
+        title: str,
+        body: str,
+    ) -> GitPullRequestResult:
+        self.settings.validate_delivery_mode()
+        repo = self._github_repo_slug()
+        payload = {
+            "title": title,
+            "head": branch,
+            "base": self.settings.git_branch,
+            "body": body,
+        }
+        data = self._github_json_request(
+            "POST",
+            f"/repos/{repo}/pulls",
+            payload=payload,
+        )
+        return GitPullRequestResult(
+            enabled=True,
+            pushed=True,
+            created=True,
+            branch=branch,
+            base=self.settings.git_branch,
+            url=data.get("html_url"),
+            number=data.get("number"),
+        )
+
+    def find_pull_request_for_branch(self, *, branch: str) -> GitPullRequestResult:
+        self.settings.validate_delivery_mode()
+        repo = self._github_repo_slug()
+        owner = repo.split("/", 1)[0]
+        query = urlencode({"head": f"{owner}:{branch}", "state": "all"})
+        data = self._github_json_request("GET", f"/repos/{repo}/pulls?{query}")
+        if not isinstance(data, list) or not data:
+            return GitPullRequestResult(
+                enabled=True,
+                pushed=True,
+                created=False,
+                branch=branch,
+                base=self.settings.git_branch,
+                url=None,
+                number=None,
+            )
+        pr = data[0]
+        return GitPullRequestResult(
+            enabled=True,
+            pushed=True,
+            created=True,
+            branch=branch,
+            base=self.settings.git_branch,
+            url=pr.get("html_url"),
+            number=pr.get("number"),
+        )
+
     def _git(self, *args: str, check: bool) -> subprocess.CompletedProcess[str]:
         completed = subprocess.run(
             ["git", *args],
-            cwd=self.settings.content_repo_path,
+            cwd=self.path,
             text=True,
             capture_output=True,
             check=False,
@@ -129,10 +237,60 @@ class GitRepository:
     def _github_auth_header(self) -> str:
         token = self.settings.github_token
         if not token:
-            raise GitPushError("GITHUB_TOKEN is required when GIT_PUSH=true.")
+            raise GitPushError("GITHUB_TOKEN is required for authenticated git operations.")
         credential = f"{self.settings.github_username}:{token}".encode("utf-8")
         encoded = base64.b64encode(credential).decode("ascii")
         return f"AUTHORIZATION: Basic {encoded}"
+
+    def _github_repo_slug(self) -> str:
+        if self.settings.github_repository:
+            return self.settings.github_repository.removesuffix(".git")
+        completed = self._git("remote", "get-url", self.settings.git_remote, check=True)
+        remote_url = completed.stdout.strip()
+        patterns = [
+            r"github\.com[:/](?P<repo>[^/\s]+/[^/\s]+?)(?:\.git)?$",
+            r"^https?://[^/]+/(?P<repo>[^/\s]+/[^/\s]+?)(?:\.git)?$",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, remote_url)
+            if match:
+                return match.group("repo")
+        raise GitPushError(
+            "Could not determine GitHub repository. Set GITHUB_REPOSITORY=owner/repo."
+        )
+
+    def _github_json_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        payload: dict[str, Any] | None = None,
+    ) -> Any:
+        if not self.settings.github_token:
+            raise GitPushError("GITHUB_TOKEN is required for GitHub API requests.")
+        body = json.dumps(payload).encode("utf-8") if payload is not None else None
+        request = Request(
+            f"{self.settings.github_api_base_url}{path}",
+            data=body,
+            method=method,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {self.settings.github_token}",
+                "Content-Type": "application/json",
+                "User-Agent": "content-archiver-telegram",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        try:
+            with urlopen(request, timeout=30) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise GitPushError(
+                _redact(f"GitHub API failed with HTTP {exc.code}: {detail}", self.settings)
+            ) from exc
+        except URLError as exc:
+            raise GitPushError(_redact(f"GitHub API request failed: {exc}", self.settings)) from exc
 
 
 def attach_commit_result(result: dict, commit: GitCommitResult) -> dict:
@@ -162,10 +320,38 @@ def attach_push_result(result: dict, push: GitPushResult) -> dict:
     return result
 
 
+def attach_pull_request_result(result: dict, pull_request: GitPullRequestResult) -> dict:
+    result["git_pr"] = {
+        "enabled": pull_request.enabled,
+        "pushed": pull_request.pushed,
+        "created": pull_request.created,
+        "branch": pull_request.branch,
+        "base": pull_request.base,
+        "url": pull_request.url,
+        "number": pull_request.number,
+    }
+    if pull_request.url and isinstance(result.get("message"), str):
+        result["message"] = f"{result['message']} PR: {pull_request.url}"
+    return result
+
+
+def request_branch_name(prefix: str, request_id: str) -> str:
+    return f"{safe_path_name(prefix)}/{safe_path_name(request_id)}"
+
+
+def safe_path_name(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip())
+    return re.sub(r"-+", "-", cleaned).strip("-") or "request"
+
+
 def _redact(text: str, settings: Settings) -> str:
     redacted = text
     if settings.github_token:
         redacted = redacted.replace(settings.github_token, "***")
+        encoded = base64.b64encode(f"{settings.github_username}:{settings.github_token}".encode()).decode(
+            "ascii"
+        )
+        redacted = redacted.replace(encoded, "***")
     return redacted
 
 

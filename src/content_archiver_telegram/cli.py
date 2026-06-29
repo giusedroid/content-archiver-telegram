@@ -4,8 +4,8 @@ from pathlib import Path
 
 import typer
 
+from .capture_workspace import prepare_capture_settings
 from .config import Settings
-from .git_push import GitRepository
 from .incoming import IncomingRequest, detect_media_type, request_id, write_incoming_request
 from .kiro_runner import KiroRunner
 from .workflows import workflow_path
@@ -32,7 +32,6 @@ def process_file(
     media_type: str | None = typer.Option(None, "--media-type"),
 ) -> None:
     settings = _settings()
-    GitRepository(settings).assert_clean_for_capture()
     source = Path(path).resolve()
     detected = media_type or detect_media_type(source)
     request = IncomingRequest(
@@ -42,13 +41,14 @@ def process_file(
         caption=caption,
         source_message_id=source.stem,
     )
+    request_settings = prepare_capture_settings(settings, request_id=request.id)
     request_path = write_incoming_request(
-        content_repo_path=settings.content_repo_path,
+        content_repo_path=request_settings.content_repo_path,
         request=request,
         source_file=source,
     )
-    result = KiroRunner(settings).run_workflow(
-        workflow_path=workflow_path(settings.content_repo_path, detected),
+    result = KiroRunner(request_settings).run_workflow(
+        workflow_path=workflow_path(request_settings.content_repo_path, detected),
         request_path=request_path,
     )
     typer.echo(result.get("message") or result)
