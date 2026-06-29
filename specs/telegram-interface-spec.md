@@ -90,10 +90,9 @@ The Telegram interface must be runnable as a single portable Docker service.
 The container image must:
 
 - use `uv` to install the Python package from `pyproject.toml` and `uv.lock`
-- install all dependencies required by the archive repo MCP tools
 - install `kiro-cli` during the Docker build
 - install Git and `ffmpeg`
-- provide Python and runtime dependencies needed by the archive repo MCP tools
+- provide Python and `uv` so mounted archive repo tools can be synced at startup
 - run `content-archiver-telegram serve` by default
 - set `KIRO_CLI=kiro-cli`
 - set `CONTENT_REPO_PATH=/workspace/content-repo`
@@ -115,6 +114,24 @@ The default host content repo path is:
 
 The default AWS config mount is an empty placeholder directory so local dry-run mode works
 without host AWS credentials.
+
+At startup, before the Telegram bot begins polling, the entrypoint must install the mounted
+archive tools project:
+
+```bash
+uv sync --project "$CONTENT_REPO_PATH/tools" --locked --no-dev
+```
+
+This behavior is controlled by:
+
+```env
+ARCHIVE_TOOLS_SYNC=true
+ARCHIVE_TOOLS_SYNC_ARGS=--locked --no-dev
+```
+
+The Docker image must not own or vendor archive MCP Python dependencies. The archive repo
+owns `tools/pyproject.toml` and `tools/uv.lock`; the Telegram container only supplies the
+compute environment that syncs and runs that project.
 
 ## Git Push Runtime
 

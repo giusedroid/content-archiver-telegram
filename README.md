@@ -71,13 +71,19 @@ uv run content-archiver-telegram search "Jeff Barr AWS London Summit"
 ## Run With Docker
 
 The Docker image follows the same headless Kiro pattern as `simple-kirolets`: it installs
-Python dependencies through `uv`, installs `kiro-cli`, runs Telegram polling as one
-process, and lets Kiro operate inside a mounted content repository.
+the Telegram ingress, installs `kiro-cli`, runs Telegram polling as one process, and lets
+Kiro operate inside a mounted content repository.
 
-The archive repo owns the MCP tool code under `tools/`, but this Docker image installs the
-dependencies needed to run those tools: `mcp`, `boto3`, `Pillow`, `ffmpeg`, `markitdown`,
-`lancedb`, OpenAI-compatible clients, and related support libraries. The mounted archive
-repo should not have to run `uv sync` inside the container for normal bot operation.
+The archive repo owns the MCP tool code and dependency graph under `tools/`. At container
+startup, the Telegram entrypoint runs:
+
+```bash
+uv sync --project "$CONTENT_REPO_PATH/tools" --locked --no-dev
+```
+
+That installs the mounted archive tools into their own uv-managed environment before the
+bot starts. The Docker image supplies the compute basics (`uv`, Python, Git, ffmpeg, Kiro
+CLI); the archive repo supplies the tool project and lockfile.
 
 Build and start:
 
@@ -114,6 +120,8 @@ The container sets:
 CONTENT_REPO_PATH=/workspace/content-repo
 KIRO_CLI=kiro-cli
 TELEGRAM_DOWNLOAD_DIR=/app/.content-archiver-telegram/downloads
+ARCHIVE_TOOLS_SYNC=true
+ARCHIVE_TOOLS_SYNC_ARGS=--locked --no-dev
 ```
 
 Only run one polling process for a Telegram bot token at a time.
@@ -153,7 +161,7 @@ Run the archive repo MCP server manually from the mounted content repo:
 
 ```bash
 cd ../content-archive-repo
-uv run content-archive-mcp --check
+uv run --project tools content-archive-mcp --check
 ```
 
 Kiro starts the content repo MCP launcher from `.kiro/settings/mcp.json`:
@@ -198,4 +206,5 @@ semantic_search
 
 The tools are for external/heavy capabilities only. Kiro should use normal repository
 access for reading/writing files and Git operations. This Telegram repo supplies the Docker
-compute environment and dependencies; the archive repo supplies the MCP code.
+compute environment and startup sync; the archive repo supplies the MCP code and Python
+dependency lockfile.

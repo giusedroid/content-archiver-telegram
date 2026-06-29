@@ -28,8 +28,6 @@ COPY pyproject.toml uv.lock .python-version README.md ./
 COPY src ./src
 COPY docker/entrypoint.sh /usr/local/bin/content-archiver-entrypoint
 
-# This installs both the Telegram ingress and the dependency stack required by the
-# mounted archive repo tools under /workspace/content-repo/tools.
 RUN uv sync --locked --no-dev \
     && chmod +x /usr/local/bin/content-archiver-entrypoint
 
