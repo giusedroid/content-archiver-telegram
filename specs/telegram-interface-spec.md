@@ -84,6 +84,38 @@ The prompt includes:
 
 Kiro runs with `cwd` set to the content repository root so it behaves like Kiro IDE opened on that repo.
 
+## Docker Runtime
+
+The Telegram interface must be runnable as a single portable Docker service.
+
+The container image must:
+
+- use `uv` to install the Python package from `pyproject.toml` and `uv.lock`
+- install `kiro-cli` during the Docker build
+- install Git and `ffmpeg`
+- expose both `content-archiver-telegram` and `content-archiver-mcp` on `PATH`
+- run `content-archiver-telegram serve` by default
+- set `KIRO_CLI=kiro-cli`
+- set `CONTENT_REPO_PATH=/workspace/content-repo`
+- set `TELEGRAM_DOWNLOAD_DIR=/app/.content-archiver-telegram/downloads`
+- configure the mounted content repository as a Git safe directory
+- optionally configure Git author identity from `GIT_USER_NAME` and `GIT_USER_EMAIL`
+
+Docker Compose must mount:
+
+- the content repository into `/workspace/content-repo`
+- a persistent Telegram download/cache volume into `/app/.content-archiver-telegram`
+- an optional host AWS config directory into `/root/.aws` so `AWS_PROFILE` works
+
+The default host content repo path is:
+
+```text
+../content-archive-repo
+```
+
+The default AWS config mount is an empty placeholder directory so local dry-run mode works
+without host AWS credentials.
+
 ## MCP Runtime
 
 This package exposes:

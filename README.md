@@ -74,6 +74,51 @@ Run semantic search through Kiro:
 uv run content-archiver-telegram search "Jeff Barr AWS London Summit"
 ```
 
+## Run With Docker
+
+The Docker image follows the same headless Kiro pattern as `simple-kirolets`: it installs
+Python dependencies through `uv`, installs `kiro-cli`, runs Telegram polling as one
+process, and lets Kiro operate inside a mounted content repository.
+
+Build and start:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Default compose mounts:
+
+```text
+../content-archive-repo -> /workspace/content-repo
+./.docker/aws-empty -> /root/.aws
+telegram-downloads volume -> /app/.content-archiver-telegram
+```
+
+For AWS profile credentials, set `AWS_PROFILE` and point `AWS_CONFIG_HOST_PATH` at your
+host AWS config directory:
+
+```env
+AWS_PROFILE=your-profile
+AWS_CONFIG_HOST_PATH=C:/Users/Admin/.aws
+```
+
+On macOS/Linux that path usually looks like:
+
+```env
+AWS_CONFIG_HOST_PATH=/home/giuseppe/.aws
+```
+
+The container sets:
+
+```env
+CONTENT_REPO_PATH=/workspace/content-repo
+KIRO_CLI=kiro-cli
+TELEGRAM_DOWNLOAD_DIR=/app/.content-archiver-telegram/downloads
+```
+
+Only run one polling process for a Telegram bot token at a time.
+
 Run the MCP server manually:
 
 ```bash
