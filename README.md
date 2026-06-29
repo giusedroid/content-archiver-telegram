@@ -156,7 +156,13 @@ Run the MCP server manually:
 uv run content-archiver-mcp
 ```
 
-Kiro normally starts this command from the content repo using `.kiro/mcp/servers.yml`.
+Kiro normally starts the content repo launcher from `.kiro/settings/mcp.json`:
+
+```text
+python .kiro/mcp/content_archiver_tools.py
+```
+
+That launcher imports this package and starts the same MCP server.
 
 ## Workflow Selection
 

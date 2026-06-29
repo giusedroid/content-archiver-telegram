@@ -157,7 +157,13 @@ This package exposes:
 content-archiver-mcp
 ```
 
-The content repo `.kiro/mcp/servers.yml` should invoke this command over stdio. Tools exposed by the server:
+The content repo `.kiro/settings/mcp.json` should invoke its repo-local launcher over stdio:
+
+```text
+python .kiro/mcp/content_archiver_tools.py
+```
+
+That launcher imports this package's MCP runtime. Tools exposed by the server:
 
 - `upload_original_to_s3`
 - `resize_image`
