@@ -27,3 +27,10 @@ def test_docker_entrypoint_syncs_archive_tools_project() -> None:
 
     assert 'uv sync --project "$CONTENT_REPO_PATH/tools"' in entrypoint
     assert "ARCHIVE_TOOLS_SYNC" in entrypoint
+
+
+def test_docker_entrypoint_normalizes_git_status_for_windows_mounts() -> None:
+    entrypoint = Path("docker/entrypoint.sh").read_text(encoding="utf-8")
+
+    assert 'git -C "$CONTENT_REPO_PATH" config core.autocrlf input' in entrypoint
+    assert 'git -C "$CONTENT_REPO_PATH" config core.filemode false' in entrypoint

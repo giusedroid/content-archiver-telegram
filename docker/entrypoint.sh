@@ -10,6 +10,8 @@ mkdir -p "$TELEGRAM_DOWNLOAD_DIR"
 
 if command -v git >/dev/null 2>&1; then
   git config --global --add safe.directory "$CONTENT_REPO_PATH" || true
+  git -C "$CONTENT_REPO_PATH" config core.autocrlf input || true
+  git -C "$CONTENT_REPO_PATH" config core.filemode false || true
 
   if [[ -n "${GIT_USER_NAME:-}" ]]; then
     git config --global user.name "$GIT_USER_NAME"
