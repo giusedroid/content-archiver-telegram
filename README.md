@@ -124,6 +124,7 @@ The container sets:
 CONTENT_REPO_PATH=/workspace/content-repo
 KIRO_CLI=kiro-cli
 TELEGRAM_DOWNLOAD_DIR=/app/.content-archiver-telegram/downloads
+KIRO_TRUST_TOOLS=read,grep,write,bash,upload_original_to_s3,resize_image,extract_video_frames,extract_audio,transcribe_audio,pdf_to_markdown,crawl_url_to_markdown,index_lancedb,semantic_search
 KIRO_REQUIRE_MCP_STARTUP=true
 ARCHIVE_TOOLS_SYNC=true
 ARCHIVE_TOOLS_SYNC_ARGS=--locked --no-dev
@@ -173,8 +174,9 @@ capture/<request-id>
 ```
 
 The runtime runs Kiro inside that worktree, commits the result, pushes the request branch,
-and opens a GitHub pull request. That lets multiple Telegram requests run without sharing
-one mutable checkout.
+and opens a GitHub pull request. The PR body includes Kiro's redacted stdout/stderr log so
+you can inspect exactly what the headless agent saw and did. That lets multiple Telegram
+requests run without sharing one mutable checkout.
 
 Use a fine-grained GitHub PAT scoped only to the content repository. For direct archive
 pushes or pull-request mode, start with:

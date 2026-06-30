@@ -6,6 +6,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+DEFAULT_KIRO_TRUST_TOOLS = (
+    "read,grep,write,bash,"
+    "upload_original_to_s3,resize_image,extract_video_frames,extract_audio,"
+    "transcribe_audio,pdf_to_markdown,crawl_url_to_markdown,index_lancedb,semantic_search"
+)
+
+
 def _bool_env(value: str | None, default: bool = False) -> bool:
     if value is None or value.strip() == "":
         return default
@@ -36,7 +43,7 @@ class Settings:
     telegram_download_dir: Path = Path(".content-archiver-telegram/downloads")
     kiro_cli: str | None = None
     kiro_api_key: str | None = None
-    kiro_trust_tools: str = "read,grep,write,bash"
+    kiro_trust_tools: str = DEFAULT_KIRO_TRUST_TOOLS
     kiro_require_mcp_startup: bool = True
     kiro_timeout_seconds: int = 600
     git_push: bool = False
@@ -64,8 +71,8 @@ class Settings:
             ),
             kiro_cli=os.getenv("KIRO_CLI") or None,
             kiro_api_key=os.getenv("KIRO_API_KEY") or None,
-            kiro_trust_tools=os.getenv("KIRO_TRUST_TOOLS", "read,grep,write,bash").strip()
-            or "read,grep,write,bash",
+            kiro_trust_tools=os.getenv("KIRO_TRUST_TOOLS", DEFAULT_KIRO_TRUST_TOOLS).strip()
+            or DEFAULT_KIRO_TRUST_TOOLS,
             kiro_require_mcp_startup=_bool_env(os.getenv("KIRO_REQUIRE_MCP_STARTUP"), True),
             kiro_timeout_seconds=int(os.getenv("KIRO_TIMEOUT_SECONDS", "600")),
             git_push=_bool_env(os.getenv("GIT_PUSH"), False),

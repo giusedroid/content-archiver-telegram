@@ -79,6 +79,13 @@ The interface invokes Kiro as:
 kiro-cli chat --no-interactive --trust-tools=<KIRO_TRUST_TOOLS> --require-mcp-startup <prompt>
 ```
 
+`KIRO_TRUST_TOOLS` must include both Kiro's filesystem/shell tools and the archive MCP
+tool names. The default is:
+
+```text
+read,grep,write,bash,upload_original_to_s3,resize_image,extract_video_frames,extract_audio,transcribe_audio,pdf_to_markdown,crawl_url_to_markdown,index_lancedb,semantic_search
+```
+
 The prompt includes:
 
 - workflow file path
@@ -192,7 +199,8 @@ Pull request procedure:
 5. Commit changed files in that worktree.
 6. Push `HEAD:refs/heads/capture/<request-id>` to `GIT_REMOTE`.
 7. Open a pull request from `capture/<request-id>` into `GIT_BRANCH`.
-8. Reply to Telegram with the request id, Kiro summary, proposed location, and PR URL.
+8. Include the full redacted Kiro stdout/stderr log in the pull request body.
+9. Reply to Telegram with the request id, Kiro summary, proposed location, and PR URL.
 
 Search workflows must not commit or push.
 

@@ -153,18 +153,19 @@ def test_kiro_runner_creates_pull_request_in_pr_mode(monkeypatch, tmp_path) -> N
     request.write_text("id: telegram-9\n", encoding="utf-8")
 
     def fake_run(args, **kwargs):
+        payload = json.dumps(
+            {
+                "ok": True,
+                "message": "captured",
+                "capture_id": "aws-london",
+                "paths": ["captures/aws-london/capture.md"],
+            }
+        )
         return subprocess.CompletedProcess(
             args=args,
             returncode=0,
-            stdout=json.dumps(
-                {
-                    "ok": True,
-                    "message": "captured",
-                    "capture_id": "aws-london",
-                    "paths": ["captures/aws-london/capture.md"],
-                }
-            ),
-            stderr="",
+            stdout=f"kiro log before json\n{payload}\nkiro log after json",
+            stderr="kiro stderr detail",
         )
 
     monkeypatch.setattr("content_archiver_telegram.kiro_runner.subprocess.run", fake_run)
@@ -186,3 +187,5 @@ def test_kiro_runner_creates_pull_request_in_pr_mode(monkeypatch, tmp_path) -> N
     assert FakeGitRepository.pushed_branches == ["capture/telegram-9"]
     assert FakeGitRepository.created_prs[0][0] == "capture/telegram-9"
     assert FakeGitRepository.created_prs[0][1] == "Capture aws-london from telegram-9"
+    assert "kiro log before json" in FakeGitRepository.created_prs[0][2]
+    assert "kiro stderr detail" in FakeGitRepository.created_prs[0][2]

@@ -69,3 +69,14 @@ def test_kiro_require_mcp_startup_can_be_disabled(monkeypatch) -> None:
     monkeypatch.setenv("KIRO_REQUIRE_MCP_STARTUP", "false")
 
     assert Settings.from_env().kiro_require_mcp_startup is False
+
+
+def test_kiro_trusts_archive_mcp_tools_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("KIRO_TRUST_TOOLS", raising=False)
+
+    trusted = set(Settings.from_env().kiro_trust_tools.split(","))
+
+    assert "resize_image" in trusted
+    assert "upload_original_to_s3" in trusted
+    assert "transcribe_audio" in trusted
+    assert "semantic_search" in trusted

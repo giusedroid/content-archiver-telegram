@@ -40,6 +40,7 @@ class KiroRunner:
         before_head = git.current_head()
         output = self._run(prompt)
         result = _parse_json_output(output)
+        result["_kiro_log"] = output
         commit = git.commit_all_if_changed(
             message=_commit_message(
                 result=result,
@@ -202,11 +203,17 @@ def _pull_request_body(*, result: dict[str, Any], request_path: Path) -> str:
     message = str(result.get("message") or "Kiro completed the capture workflow.")
     paths = result.get("paths") if isinstance(result.get("paths"), list) else []
     path_lines = "\n".join(f"- `{path}`" for path in paths) or "- No paths reported."
+    kiro_log = str(result.get("_kiro_log") or "No Kiro output captured.")
     return (
         f"Request: `{request_path.parent.name}`\n\n"
         f"Kiro result:\n\n{message}\n\n"
-        f"Reported paths:\n\n{path_lines}\n"
+        f"Reported paths:\n\n{path_lines}\n\n"
+        f"Full Kiro log:\n\n```text\n{_fence_safe(kiro_log)}\n```\n"
     )
+
+
+def _fence_safe(text: str) -> str:
+    return text.replace("```", "`\u200b``")
 
 
 def _parse_json_output(output: str) -> dict[str, Any]:
