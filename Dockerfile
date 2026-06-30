@@ -1,7 +1,6 @@
 FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim
 
 ENV PYTHONUNBUFFERED=1 \
-    UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     CONTENT_REPO_PATH=/workspace/content-repo \
     TELEGRAM_DOWNLOAD_DIR=/app/.content-archiver-telegram/downloads \

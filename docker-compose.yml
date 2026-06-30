@@ -8,12 +8,14 @@ services:
       - path: .env
         required: false
     environment:
+      CONTENT_REPO_MODE: ${CONTENT_REPO_MODE:-clone}
+      CONTENT_REPO_GIT_URL: ${CONTENT_REPO_GIT_URL:-https://github.com/giusedroid/content-archive-repo.git}
       CONTENT_REPO_PATH: /workspace/content-repo
       TELEGRAM_DOWNLOAD_DIR: /app/.content-archiver-telegram/downloads
       KIRO_CLI: kiro-cli
     volumes:
-      - type: bind
-        source: ${CONTENT_REPO_HOST_PATH:-../content-archive-repo}
+      - type: volume
+        source: content-repo
         target: /workspace/content-repo
       - type: bind
         source: ${AWS_CONFIG_HOST_PATH:-./.docker/aws-empty}
@@ -23,4 +25,5 @@ services:
     restart: unless-stopped
 
 volumes:
+  content-repo:
   telegram-downloads:

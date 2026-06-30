@@ -76,7 +76,7 @@ uv run content-archiver-telegram search "Jeff Barr AWS London Summit"
 
 The Docker image follows the same headless Kiro pattern as `simple-kirolets`: it installs
 the Telegram ingress, installs `kiro-cli`, runs Telegram polling as one process, and lets
-Kiro operate inside a mounted content repository.
+Kiro operate inside a content repository checkout stored in a Docker named volume.
 
 The archive repo owns the MCP tool code and dependency graph under `tools/`. At container
 startup, the Telegram entrypoint runs:
@@ -85,9 +85,11 @@ startup, the Telegram entrypoint runs:
 uv sync --project "$CONTENT_REPO_PATH/tools" --locked --no-dev
 ```
 
-That installs the mounted archive tools into their own uv-managed environment before the
-bot starts. The Docker image supplies the compute basics (`uv`, Python, Git, ffmpeg, Kiro
-CLI); the archive repo supplies the tool project and lockfile.
+That installs the cloned archive tools into their own uv-managed environment before the
+bot starts, then the entrypoint prepends that tools venv to `PATH` so Kiro can start
+`content-archive-mcp` directly without `uv run`. The Docker image supplies the compute
+basics (`uv`, Python, Git, ffmpeg, Kiro CLI); the archive repo supplies the tool project
+and lockfile.
 
 Build and start:
 
@@ -96,13 +98,18 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Default compose mounts:
+Default compose uses:
 
 ```text
-../content-archive-repo -> /workspace/content-repo
+content-repo volume -> /workspace/content-repo
 ./.docker/aws-empty -> /root/.aws
 telegram-downloads volume -> /app/.content-archiver-telegram
 ```
+
+On startup, `CONTENT_REPO_MODE=clone` clones or updates `CONTENT_REPO_GIT_URL` inside the
+`content-repo` volume. This avoids running Kiro, `uv`, and MCP imports over a Windows bind
+mount. GitHub is the source of truth for the runtime archive checkout; push archive repo
+infrastructure changes before expecting the bot to use them.
 
 For AWS profile credentials, set `AWS_PROFILE` and point `AWS_CONFIG_HOST_PATH` at your
 host AWS config directory:
@@ -121,6 +128,8 @@ AWS_CONFIG_HOST_PATH=/home/giuseppe/.aws
 The container sets:
 
 ```env
+CONTENT_REPO_MODE=clone
+CONTENT_REPO_GIT_URL=https://github.com/giusedroid/content-archive-repo.git
 CONTENT_REPO_PATH=/workspace/content-repo
 KIRO_CLI=kiro-cli
 TELEGRAM_DOWNLOAD_DIR=/app/.content-archiver-telegram/downloads
@@ -143,7 +152,7 @@ Direct commit mode is the default:
 CAPTURE_DELIVERY_MODE=commit
 ```
 
-In direct commit mode, the mounted content repo worktree must be clean before accepting a
+In direct commit mode, the runtime content repo worktree must be clean before accepting a
 new capture. This prevents a later successful capture from accidentally committing older
 partial output. Direct mode can also push deterministically when enabled:
 
@@ -210,20 +219,21 @@ The bot also supports:
 
 In pull request mode, this looks up the request branch and returns the matching PR URL.
 
-Run the archive repo MCP server manually from the mounted content repo:
+Run the archive repo MCP server manually from the content repo after syncing tools:
 
 ```bash
 cd ../content-archive-repo
-uv run --project tools content-archive-mcp --check
+uv sync --project tools --group dev
+tools/.venv/bin/content-archive-mcp --check
 ```
 
 Kiro starts the content repo MCP launcher from `.kiro/settings/mcp.json`:
 
 ```text
-python tools/content_archiver_mcp.py
+content-archive-mcp
 ```
 
-That launcher and the tool implementation live in the mounted content archive repo.
+That launcher and the tool implementation live in the content archive repo.
 By default, the Telegram runtime invokes Kiro with `--require-mcp-startup` so broken or
 missing MCP tools fail loudly instead of producing partial capture notes.
 

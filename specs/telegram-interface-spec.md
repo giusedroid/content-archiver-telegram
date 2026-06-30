@@ -107,30 +107,37 @@ The container image must:
 - use `uv` to install the Python package from `pyproject.toml` and `uv.lock`
 - install `kiro-cli` during the Docker build
 - install Git and `ffmpeg`
-- provide Python and `uv` so mounted archive repo tools can be synced at startup
+- provide Python and `uv` so cloned archive repo tools can be synced at startup
 - run `content-archiver-telegram serve` by default
 - set `KIRO_CLI=kiro-cli`
 - set `CONTENT_REPO_PATH=/workspace/content-repo`
 - set `TELEGRAM_DOWNLOAD_DIR=/app/.content-archiver-telegram/downloads`
-- configure the mounted content repository as a Git safe directory
+- configure the cloned content repository as a Git safe directory
 - optionally configure Git author identity from `GIT_USER_NAME` and `GIT_USER_EMAIL`
 
 Docker Compose must mount:
 
-- the content repository into `/workspace/content-repo`
+- a Docker named volume for the content repository at `/workspace/content-repo`
 - a persistent Telegram download/cache volume into `/app/.content-archiver-telegram`
 - an optional host AWS config directory into `/root/.aws` so `AWS_PROFILE` works
 
-The default host content repo path is:
+The default content repo mode is:
 
-```text
-../content-archive-repo
+```env
+CONTENT_REPO_MODE=clone
+CONTENT_REPO_GIT_URL=https://github.com/giusedroid/content-archive-repo.git
 ```
+
+At startup, clone mode should clone the content repository into the named Docker volume if
+it is absent. If it already exists, the entrypoint should refuse to continue when the
+checkout is dirty, then fetch and reset the configured branch to the remote branch.
+Authentication must use a temporary Git HTTP auth header derived from `GITHUB_TOKEN`, not
+a token persisted in `.git/config`.
 
 The default AWS config mount is an empty placeholder directory so local dry-run mode works
 without host AWS credentials.
 
-At startup, before the Telegram bot begins polling, the entrypoint must install the mounted
+At startup, before the Telegram bot begins polling, the entrypoint must install the cloned
 archive tools project:
 
 ```bash
@@ -147,6 +154,10 @@ ARCHIVE_TOOLS_SYNC_ARGS=--locked --no-dev
 The Docker image must not own or vendor archive MCP Python dependencies. The archive repo
 owns `tools/pyproject.toml` and `tools/uv.lock`; the Telegram container only supplies the
 compute environment that syncs and runs that project.
+
+After sync, the entrypoint must prepend `$CONTENT_REPO_PATH/tools/.venv/bin` to `PATH` so
+Kiro can start `content-archive-mcp` directly from `.kiro/settings/mcp.json` without
+paying `uv run` startup cost for every MCP process.
 
 ## Delivery Runtime
 
@@ -170,7 +181,7 @@ GITHUB_REPOSITORY=
 
 Supported modes:
 
-- `commit`: use the mounted content repo checkout directly.
+- `commit`: use the runtime content repo checkout directly.
 - `pull-request`: create a per-request git worktree, branch, commit, push, and GitHub PR.
 
 When `GIT_PUSH=true` or `CAPTURE_DELIVERY_MODE=pull-request`, `GITHUB_TOKEN` is required.
@@ -209,7 +220,7 @@ Search workflows must not commit or push.
 The content repo `.kiro/settings/mcp.json` should invoke its repo-local launcher over stdio:
 
 ```text
-python tools/content_archiver_mcp.py
+content-archive-mcp
 ```
 
 That launcher imports the archive repo's MCP runtime from `tools/content_archive_mcp/`.
