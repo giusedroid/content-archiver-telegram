@@ -33,7 +33,6 @@ prepare_cloned_content_repo() {
       echo "$CONTENT_REPO_PATH is not empty and is not a git checkout." >&2
       exit 1
     fi
-    rm -rf "$CONTENT_REPO_PATH"
     run_git clone --branch "${GIT_BRANCH:-main}" "$CONTENT_REPO_GIT_URL" "$CONTENT_REPO_PATH"
   fi
 
