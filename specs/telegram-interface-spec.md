@@ -79,12 +79,15 @@ The interface invokes Kiro as:
 kiro-cli chat --no-interactive --trust-tools=<KIRO_TRUST_TOOLS> --require-mcp-startup <prompt>
 ```
 
-`KIRO_TRUST_TOOLS` must include both Kiro's filesystem/shell tools and the archive MCP
-tool names. The default is:
+`KIRO_TRUST_TOOLS` must include Kiro's filesystem tools and archive MCP tool names prefixed
+with the MCP server name. The default is:
 
 ```text
-read,grep,write,bash,upload_original_to_s3,resize_image,extract_video_frames,extract_audio,transcribe_audio,pdf_to_markdown,crawl_url_to_markdown,index_lancedb,semantic_search
+read,grep,write,@content-archiver-tools/crawl_url_to_markdown,@content-archiver-tools/extract_audio,@content-archiver-tools/extract_video_frames,@content-archiver-tools/index_lancedb,@content-archiver-tools/pdf_to_markdown,@content-archiver-tools/resize_image,@content-archiver-tools/semantic_search,@content-archiver-tools/transcribe_audio,@content-archiver-tools/upload_original_to_s3
 ```
+
+The runtime should normalize older bare archive tool names such as `resize_image` to
+`@content-archiver-tools/resize_image`.
 
 The prompt includes:
 

@@ -76,7 +76,20 @@ def test_kiro_trusts_archive_mcp_tools_by_default(monkeypatch) -> None:
 
     trusted = set(Settings.from_env().kiro_trust_tools.split(","))
 
-    assert "resize_image" in trusted
-    assert "upload_original_to_s3" in trusted
-    assert "transcribe_audio" in trusted
-    assert "semantic_search" in trusted
+    assert "@content-archiver-tools/resize_image" in trusted
+    assert "@content-archiver-tools/upload_original_to_s3" in trusted
+    assert "@content-archiver-tools/transcribe_audio" in trusted
+    assert "@content-archiver-tools/semantic_search" in trusted
+    assert "bash" not in trusted
+
+
+def test_kiro_trust_tools_normalizes_legacy_archive_tool_names(monkeypatch) -> None:
+    monkeypatch.setenv("KIRO_TRUST_TOOLS", "read,bash,resize_image,semantic_search")
+
+    trusted = set(Settings.from_env().kiro_trust_tools.split(","))
+
+    assert "read" in trusted
+    assert "bash" not in trusted
+    assert "resize_image" not in trusted
+    assert "@content-archiver-tools/resize_image" in trusted
+    assert "@content-archiver-tools/semantic_search" in trusted

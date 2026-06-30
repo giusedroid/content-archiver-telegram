@@ -6,10 +6,25 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
-DEFAULT_KIRO_TRUST_TOOLS = (
-    "read,grep,write,bash,"
-    "upload_original_to_s3,resize_image,extract_video_frames,extract_audio,"
-    "transcribe_audio,pdf_to_markdown,crawl_url_to_markdown,index_lancedb,semantic_search"
+ARCHIVE_MCP_SERVER = "content-archiver-tools"
+ARCHIVE_MCP_TOOLS = {
+    "upload_original_to_s3",
+    "resize_image",
+    "extract_video_frames",
+    "extract_audio",
+    "transcribe_audio",
+    "pdf_to_markdown",
+    "crawl_url_to_markdown",
+    "index_lancedb",
+    "semantic_search",
+}
+DEFAULT_KIRO_TRUST_TOOLS = ",".join(
+    [
+        "read",
+        "grep",
+        "write",
+        *[f"@{ARCHIVE_MCP_SERVER}/{tool}" for tool in sorted(ARCHIVE_MCP_TOOLS)],
+    ]
 )
 
 
@@ -31,6 +46,24 @@ def _int_set_env(value: str | None) -> set[int]:
         except ValueError as exc:
             raise RuntimeError(f"TELEGRAM_ALLOWED_USER_IDS contains a non-integer: {token}") from exc
     return ids
+
+
+def _kiro_trust_tools_env(value: str | None) -> str:
+    raw = (value or DEFAULT_KIRO_TRUST_TOOLS).strip() or DEFAULT_KIRO_TRUST_TOOLS
+    trusted: list[str] = []
+    seen: set[str] = set()
+    for token in re.split(r"[\s,;]+", raw):
+        if not token:
+            continue
+        normalized = token
+        if token in ARCHIVE_MCP_TOOLS:
+            normalized = f"@{ARCHIVE_MCP_SERVER}/{token}"
+        if normalized == "bash":
+            continue
+        if normalized not in seen:
+            trusted.append(normalized)
+            seen.add(normalized)
+    return ",".join(trusted)
 
 
 @dataclass(slots=True)
@@ -71,8 +104,7 @@ class Settings:
             ),
             kiro_cli=os.getenv("KIRO_CLI") or None,
             kiro_api_key=os.getenv("KIRO_API_KEY") or None,
-            kiro_trust_tools=os.getenv("KIRO_TRUST_TOOLS", DEFAULT_KIRO_TRUST_TOOLS).strip()
-            or DEFAULT_KIRO_TRUST_TOOLS,
+            kiro_trust_tools=_kiro_trust_tools_env(os.getenv("KIRO_TRUST_TOOLS")),
             kiro_require_mcp_startup=_bool_env(os.getenv("KIRO_REQUIRE_MCP_STARTUP"), True),
             kiro_timeout_seconds=int(os.getenv("KIRO_TIMEOUT_SECONDS", "600")),
             git_push=_bool_env(os.getenv("GIT_PUSH"), False),
