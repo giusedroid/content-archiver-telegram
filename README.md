@@ -86,10 +86,8 @@ uv sync --project "$CONTENT_REPO_PATH/tools" --locked --no-dev
 ```
 
 That installs the cloned archive tools into their own uv-managed environment before the
-bot starts, then the entrypoint prepends that tools venv to `PATH` so Kiro can start
-`content-archive-mcp` directly without `uv run`. The Docker image supplies the compute
-basics (`uv`, Python, Git, ffmpeg, Kiro CLI); the archive repo supplies the tool project
-and lockfile.
+bot starts. The Docker image supplies the compute basics (`uv`, Python, Git, ffmpeg, Kiro
+CLI); the archive repo supplies the tool project and lockfile.
 
 Build and start:
 
@@ -230,7 +228,7 @@ tools/.venv/bin/content-archive-mcp --check
 Kiro starts the content repo MCP launcher from `.kiro/settings/mcp.json`:
 
 ```text
-content-archive-mcp
+uv run --project tools content-archive-mcp
 ```
 
 That launcher and the tool implementation live in the content archive repo.

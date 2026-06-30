@@ -158,9 +158,10 @@ The Docker image must not own or vendor archive MCP Python dependencies. The arc
 owns `tools/pyproject.toml` and `tools/uv.lock`; the Telegram container only supplies the
 compute environment that syncs and runs that project.
 
-After sync, the entrypoint must prepend `$CONTENT_REPO_PATH/tools/.venv/bin` to `PATH` so
-Kiro can start `content-archive-mcp` directly from `.kiro/settings/mcp.json` without
-paying `uv run` startup cost for every MCP process.
+The active MCP registration should remain portable for Kiro IDE and Docker. It may use
+`uv run --project tools content-archive-mcp`; Docker performance comes from cloning the
+archive into a Linux-native volume and disabling runtime bytecode compilation, not from a
+container-only command path.
 
 ## Delivery Runtime
 
@@ -223,7 +224,7 @@ Search workflows must not commit or push.
 The content repo `.kiro/settings/mcp.json` should invoke its repo-local launcher over stdio:
 
 ```text
-content-archive-mcp
+uv run --project tools content-archive-mcp
 ```
 
 That launcher imports the archive repo's MCP runtime from `tools/content_archive_mcp/`.
