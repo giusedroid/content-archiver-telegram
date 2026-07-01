@@ -40,7 +40,11 @@ def run_bot(settings: Settings) -> None:
         if not query:
             await update.effective_message.reply_text("Usage: /search <query>")
             return
-        result = await asyncio.to_thread(search_archive, settings, query=query)
+        try:
+            result = await asyncio.to_thread(search_archive, settings, query=query)
+        except Exception as exc:
+            await update.effective_message.reply_text(_search_failure_message(exc))
+            return
         await update.effective_message.reply_text(format_search_result(result))
 
     async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -258,6 +262,11 @@ def _failure_message(request: IncomingRequest, exc: Exception) -> str:
         f"{detail}\n"
         "I did not commit or open a PR for this capture."
     )
+
+
+def _search_failure_message(exc: Exception) -> str:
+    detail = str(exc).strip().splitlines()[0] if str(exc).strip() else "Search failed."
+    return f"Search failed before results.\n{detail}"
 
 
 def _short_request_id(request_id_value: str) -> str:

@@ -10,6 +10,7 @@ from content_archiver_telegram.telegram_bot import (
     _failure_message,
     _intro_message,
     _result_message,
+    _search_failure_message,
 )
 
 
@@ -83,3 +84,9 @@ def test_failure_message_says_no_commit_or_pr() -> None:
     assert "egram-44" in message
     assert "failed before commit" in message
     assert "did not commit or open a PR" in message
+
+
+def test_search_failure_message_uses_first_line() -> None:
+    message = _search_failure_message(RuntimeError("schema mismatch\ntraceback detail"))
+
+    assert message == "Search failed before results.\nschema mismatch"
