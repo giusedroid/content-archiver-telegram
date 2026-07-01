@@ -395,6 +395,9 @@ Search from the CLI:
 content-archiver-telegram search "Jeff Barr AWS London Summit"
 ```
 
+Inside Docker debug shells the CLI is also symlinked into `/usr/local/bin`, so this works
+with `docker compose exec telegram-bot ...` after rebuilding the image.
+
 Search from Telegram:
 
 ```text

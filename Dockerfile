@@ -30,6 +30,7 @@ COPY src ./src
 COPY docker/entrypoint.sh /usr/local/bin/content-archiver-entrypoint
 
 RUN uv sync --locked --no-dev \
+    && ln -sf /app/.venv/bin/content-archiver-telegram /usr/local/bin/content-archiver-telegram \
     && chmod +x /usr/local/bin/content-archiver-entrypoint
 
 ENTRYPOINT ["content-archiver-entrypoint"]
