@@ -61,6 +61,14 @@ The archive MCP tools still use the MCP protocol. The difference is who starts a
 them: today the Telegram runtime is the MCP client; later Kiro can become the MCP client
 again if `kiro-cli chat` reliably surfaces configured MCP tools.
 
+This is intentionally unorthodox. It exists because Kiro CLI currently has a runtime
+issue where configured MCP servers may not be loaded or surfaced as callable tools in the
+default CLI chat runtime. See
+[kirodotdev/Kiro#7425](https://github.com/kirodotdev/Kiro/issues/7425), where `/mcp`
+shows zero servers in the default CLI mode while the same MCP servers work in
+`--classic`. Until that Kiro-side MCP lifecycle is reliable, this repo runs the archive
+MCP lifecycle directly and passes the results to Kiro through `request.yml`.
+
 ## Boundaries And Contract
 
 There are two repositories with separate responsibilities.
