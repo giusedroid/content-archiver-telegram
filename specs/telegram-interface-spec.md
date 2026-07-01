@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This repository provides the Telegram surface for a Kiro-operated content archive. It is not the semantic orchestrator. It is an ingress adapter and Kiro workflow launcher.
+This repository provides the Telegram surface for a Kiro-operated content archive. It is not the semantic orchestrator. It is an ingress adapter, deterministic archive MCP client, and Kiro workflow launcher.
 
 ## Responsibilities
 
@@ -17,7 +17,7 @@ This repository provides the Telegram surface for a Kiro-operated content archiv
 - Commit successful capture changes in the content repository after Kiro returns valid JSON.
 - Optionally push directly or push a request branch and open a GitHub pull request.
 - Relay Kiro's result back to Telegram.
-- Provide `/search` as a Kiro-mediated semantic search capability.
+- Provide `/search` through direct archive MCP calls to `index_lancedb` and `semantic_search`.
 - Provide `/status <request-id>` to look up request pull requests.
 
 ## Non-Responsibilities
@@ -68,7 +68,7 @@ audio -> .kiro/workflows/capture-audio.md
 pdf -> .kiro/workflows/capture-pdf.md
 link -> .kiro/workflows/capture-link.md
 text -> .kiro/workflows/capture-text.md
-search -> .kiro/workflows/search.md
+search -> direct MCP calls: index_lancedb, semantic_search
 ```
 
 ## Kiro Invocation
@@ -79,8 +79,10 @@ The interface invokes Kiro as:
 kiro-cli chat --no-interactive --trust-tools=<KIRO_TRUST_TOOLS> --require-mcp-startup <prompt>
 ```
 
-`KIRO_TRUST_TOOLS` must include Kiro's filesystem tools and archive MCP tool names prefixed
-with the MCP server name. The default is:
+`KIRO_TRUST_TOOLS` includes Kiro's filesystem tools and archive MCP tool names prefixed
+with the MCP server name for forward compatibility. While Kiro CLI MCP startup is
+unreliable, capture preprocessing and search call the archive MCP server directly from the
+Telegram runtime. The default is:
 
 ```text
 read,grep,write,@content-archiver-tools/crawl_url_to_markdown,@content-archiver-tools/extract_audio,@content-archiver-tools/extract_video_frames,@content-archiver-tools/index_lancedb,@content-archiver-tools/pdf_to_markdown,@content-archiver-tools/resize_image,@content-archiver-tools/semantic_search,@content-archiver-tools/transcribe_audio,@content-archiver-tools/upload_original_to_s3
@@ -97,9 +99,12 @@ The prompt includes:
 - expected JSON result shape
 
 Kiro runs with `cwd` set to the content repository root so it behaves like Kiro IDE opened on that repo.
-`KIRO_REQUIRE_MCP_STARTUP=true` is the default. If MCP startup fails, the Telegram
-interface should fail the capture instead of allowing Kiro to write partial "MCP tools
-unavailable" notes. The switch may be set to `false` only for deliberate local debugging.
+Kiro should read the enriched request file and edit archive files directly; it should not
+re-run deterministic MCP preprocessing.
+`KIRO_REQUIRE_MCP_STARTUP=false` is the default while Kiro CLI MCP startup is unreliable.
+The Telegram runtime executes archive MCP preprocessing itself before invoking Kiro.
+If `KIRO_REQUIRE_MCP_STARTUP=true`, the Telegram interface should fail the capture when MCP
+startup fails instead of allowing Kiro to write partial "MCP tools unavailable" notes.
 Because Kiro CLI can currently emit MCP startup failures as warnings while still exiting
 with status 0, the Telegram runtime must scan Kiro stdout/stderr for `Failed to retrieve
 MCP settings` and `MCP functionality disabled` and treat either as a failed run before
@@ -118,6 +123,29 @@ invokes `kiro-cli chat -v -v ...`. The runtime must log a redacted Kiro transcri
 each run under `KIRO_LOG_DIR`, including cwd, command shape, return code, stdout, and
 stderr. Runtime logs must include the redacted transcript path when a Kiro/MCP failure is
 detected.
+
+## Search
+
+Search is intentionally not routed through Kiro while Kiro CLI MCP startup is unreliable.
+
+Flow:
+
+1. User sends `/search <query>`.
+2. Telegram runtime starts the content repo MCP server over stdio.
+3. Telegram runtime calls `index_lancedb` to refresh changed markdown.
+4. Telegram runtime calls `semantic_search`.
+5. Telegram returns concise results.
+
+For NVIDIA Build/NIM embeddings:
+
+```env
+EMBEDDING_PROVIDER=nvidia
+EMBEDDING_MODEL=nvidia/nv-embed-v1
+NVIDIA_API_KEY=
+```
+
+The archive MCP tool uses NVIDIA `input_type=passage` for index chunks and
+`input_type=query` for user search queries.
 
 ## Docker Runtime
 

@@ -11,6 +11,7 @@ from .git_push import GitPushError, GitRepository
 from .incoming import IncomingRequest, request_id, write_incoming_request
 from .kiro_runner import KiroRunner, KiroRunError
 from .preprocessor import PreprocessError, preprocess_request
+from .search import format_search_result, search_archive
 from .workflows import workflow_path
 
 
@@ -39,8 +40,8 @@ def run_bot(settings: Settings) -> None:
         if not query:
             await update.effective_message.reply_text("Usage: /search <query>")
             return
-        result = KiroRunner(settings).run_search(query=query)
-        await update.effective_message.reply_text(str(result.get("message") or result))
+        result = await asyncio.to_thread(search_archive, settings, query=query)
+        await update.effective_message.reply_text(format_search_result(result))
 
     async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not _authorized(update, settings):

@@ -261,7 +261,7 @@ GIT_PUSH=true
 GIT_REMOTE=origin
 GIT_BRANCH=main
 GITHUB_USERNAME=giusedroid
-GITHUB_TOKEN=github_pat_xxxxx
+GITHUB_TOKEN=<github-pat>
 ```
 
 Pull request mode is the concurrency path:
@@ -273,7 +273,7 @@ GIT_BRANCH_PREFIX=capture
 GIT_REMOTE=origin
 GIT_BRANCH=main
 GITHUB_REPOSITORY=giusedroid/content-archive-repo
-GITHUB_TOKEN=github_pat_xxxxx
+GITHUB_TOKEN=<github-pat>
 ```
 
 In pull request mode, each request gets an isolated git worktree and branch:
@@ -348,12 +348,17 @@ audio/voice -> .kiro/workflows/capture-audio.md
 pdf -> .kiro/workflows/capture-pdf.md
 link -> .kiro/workflows/capture-link.md
 text -> .kiro/workflows/capture-text.md
-search -> .kiro/workflows/search.md
+search -> direct MCP calls: index_lancedb, semantic_search
 ```
 
-Kiro is expected to read the workflow prompt, use the content repo MCP tools where needed,
-edit files directly, and return JSON with a Telegram-friendly message. The Telegram runtime
-creates the commit after a successful Kiro result.
+For capture workflows, the Telegram runtime executes deterministic archive MCP tools first
+and writes their results into the intake file. Kiro then reads the workflow prompt and
+enriched request, edits files directly, and returns JSON with a Telegram-friendly message.
+The Telegram runtime creates the commit after a successful Kiro result.
+
+`/search` intentionally bypasses Kiro while Kiro CLI MCP startup is unreliable. The Telegram
+runtime starts the archive MCP server itself, refreshes the semantic index, and calls
+`semantic_search` directly.
 
 ## MCP Tool Runtime
 
@@ -375,3 +380,34 @@ The tools are for external/heavy capabilities only. Kiro should use normal repos
 access for reading/writing files and Git operations. This Telegram repo supplies the Docker
 compute environment and startup sync; the archive repo supplies the MCP code and Python
 dependency lockfile.
+
+## Semantic Search
+
+Run a one-off index refresh:
+
+```bash
+content-archiver-telegram index
+```
+
+Search from the CLI:
+
+```bash
+content-archiver-telegram search "Jeff Barr AWS London Summit"
+```
+
+Search from Telegram:
+
+```text
+/search Jeff Barr AWS London Summit
+```
+
+For NVIDIA Build/NIM embeddings:
+
+```env
+EMBEDDING_PROVIDER=nvidia
+EMBEDDING_MODEL=nvidia/nv-embed-v1
+NVIDIA_API_KEY=<your NVIDIA API key>
+```
+
+The archive MCP tools use NVIDIA `input_type=passage` while indexing and `input_type=query`
+while searching.

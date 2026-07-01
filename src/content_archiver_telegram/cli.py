@@ -11,6 +11,7 @@ from .config import Settings
 from .incoming import IncomingRequest, detect_media_type, request_id, write_incoming_request
 from .kiro_runner import KiroRunner
 from .preprocessor import preprocess_request
+from .search import format_search_result, index_archive, search_archive
 from .workflows import workflow_path
 
 
@@ -63,6 +64,12 @@ def process_file(
 
 
 @app.command()
-def search(query: str) -> None:
-    result = KiroRunner(_settings()).run_search(query=query)
-    typer.echo(result.get("message") or result)
+def index() -> None:
+    result = index_archive(_settings())
+    typer.echo(result)
+
+
+@app.command()
+def search(query: str, limit: int = typer.Option(10, "--limit", "-n")) -> None:
+    result = search_archive(_settings(), query=query, limit=limit)
+    typer.echo(format_search_result(result))
