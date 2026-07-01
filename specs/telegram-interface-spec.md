@@ -134,7 +134,18 @@ Flow:
 2. Telegram runtime starts the content repo MCP server over stdio.
 3. Telegram runtime calls `index_lancedb` to refresh changed markdown.
 4. Telegram runtime calls `semantic_search`.
-5. Telegram returns concise results.
+5. Telegram groups matching chunks by capture and returns concise results.
+
+Search results should include:
+
+- capture title derived from `capture_id`
+- best matched file path
+- short text snippet
+- `Open capture` GitHub URL
+- `Open matched file` GitHub URL, with line anchors when available
+
+Links are built from `GITHUB_REPOSITORY` and `GIT_BRANCH`; `GITHUB_REPOSITORY` must refer
+to the content archive repository.
 
 For NVIDIA Build/NIM embeddings:
 

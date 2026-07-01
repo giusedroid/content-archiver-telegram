@@ -404,6 +404,12 @@ Search from Telegram:
 /search Jeff Barr AWS London Summit
 ```
 
+Search results are grouped by capture instead of raw chunks. Each result includes a short
+snippet, an `Open capture` GitHub URL, and an `Open matched file` GitHub URL with line
+anchors when the archive index has line metadata. Links are built from
+`GITHUB_REPOSITORY` and `GIT_BRANCH`, so `GITHUB_REPOSITORY` should point at the content
+archive repo, not this Telegram runtime repo.
+
 For NVIDIA Build/NIM embeddings:
 
 ```env
