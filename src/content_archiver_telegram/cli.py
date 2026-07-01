@@ -19,11 +19,35 @@ app = typer.Typer(help="Telegram ingress for the Kiro-operated content archive."
 
 
 def _settings() -> Settings:
+    token = os.getenv("TELEGRAM_BOT_TOKEN") or None
     logging.basicConfig(
         level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    if token:
+        redaction_filter = _SecretRedactionFilter([token])
+        logging.getLogger().addFilter(redaction_filter)
+        for handler in logging.getLogger().handlers:
+            handler.addFilter(redaction_filter)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     return Settings.from_env()
+
+
+class _SecretRedactionFilter(logging.Filter):
+    def __init__(self, secrets: list[str]) -> None:
+        super().__init__()
+        self.secrets = [secret for secret in secrets if secret]
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not self.secrets:
+            return True
+        message = record.getMessage()
+        for secret in self.secrets:
+            message = message.replace(secret, "***")
+        record.msg = message
+        record.args = ()
+        return True
 
 
 @app.command()
