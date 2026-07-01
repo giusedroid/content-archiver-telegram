@@ -5,30 +5,124 @@ This repository is the Telegram ingress for the content archive. It is intention
 1. authenticate Telegram users
 2. download Telegram files
 3. write an incoming request into the content repository
-4. select the correct Kiro workflow prompt by media type
-5. invoke Kiro headless with the content repository as the working directory
-6. commit successful capture changes
-7. optionally push directly or open a pull request
-8. return Kiro's concise result to Telegram
+4. run the content repository MCP tools deterministically through a stdio MCP client
+5. write MCP preprocessing results back into the incoming request
+6. select the correct Kiro workflow prompt by media type
+7. invoke Kiro headless with the content repository as the working directory
+8. commit successful capture changes
+9. optionally push directly or open a pull request
+10. return Kiro's concise result to Telegram
 
 The content repository owns the `.kiro` steering, workflow prompts, MCP tool definitions,
 MCP implementation, captures, TODOs, and index files. This repo does not decide capture
-semantics and does not own archive-scoped tools.
+semantics and does not own archive-scoped tools. This repo temporarily acts as an MCP
+client because `kiro-cli chat` currently reads MCP configuration but does not surface
+configured MCP tools as callable tools in non-interactive sessions.
 
 ## Architecture
 
 ```text
 Telegram
-  -> content-archiver-telegram
-  -> content repo .content-archiver/incoming/<request-id>/request.yml
-  -> Kiro headless in the content repo
-  -> .kiro/workflows/<media-workflow>.md
-  -> content-repo MCP tools for AWS/media/transcription/search
-  -> captures/, todo/, index/
-  -> git commit
-  -> optional git push or pull request
-  -> Telegram reply
+  |
+  v
+content-archiver-telegram
+  |  owns Telegram auth, downloads, request lifecycle, Docker runtime
+  |  writes .content-archiver/incoming/<request-id>/request.yml
+  v
+content-archive-repo checkout
+  |
+  |<-- stdio MCP: uv run --project tools content-archive-mcp
+  |    tools live in content-archive-repo/tools/
+  |
+  v
+enriched request.yml
+  |  includes preprocessing.steps with S3 URIs, previews, transcripts,
+  |  crawled markdown, extracted frames/audio, or tool failures
+  v
+Kiro headless
+  |  reads .kiro/workflows/<media-workflow>.md
+  |  reads enriched request.yml
+  |  classifies and edits captures/, todo/, index/
+  v
+git commit / optional push or pull request
+  |
+  v
+Telegram reply
 ```
+
+Current default mode:
+
+```env
+ARCHIVE_MCP_PREPROCESS=true
+KIRO_REQUIRE_MCP_STARTUP=false
+```
+
+The archive MCP tools still use the MCP protocol. The difference is who starts and calls
+them: today the Telegram runtime is the MCP client; later Kiro can become the MCP client
+again if `kiro-cli chat` reliably surfaces configured MCP tools.
+
+## Boundaries And Contract
+
+There are two repositories with separate responsibilities.
+
+```text
+content-archiver-telegram
+  Owns:
+    - Telegram bot commands and message handlers
+    - Telegram user allowlist/security
+    - Telegram file download cache
+    - Docker image and startup sequence
+    - Cloning/updating the content repo runtime checkout
+    - Per-request git worktrees and branches in pull-request mode
+    - Stdio MCP client used for deterministic preprocessing
+    - Kiro process invocation
+    - Git commit, push, and GitHub PR creation
+
+content-archive-repo
+  Owns:
+    - Archive workspace layout
+    - .kiro steering and workflow prompts
+    - .kiro/settings/mcp.json
+    - MCP server implementation under tools/
+    - MCP tool dependency lockfile
+    - captures/, todo/, index/
+    - The durable markdown/YAML/previews/transcripts output model
+```
+
+The contract between the repos is file-based plus MCP-based:
+
+```text
+1. content-archiver-telegram writes:
+   .content-archiver/incoming/<request-id>/request.yml
+
+2. content-archiver-telegram calls the content repo MCP server:
+   uv run --project tools content-archive-mcp
+
+3. content-archiver-telegram updates request.yml with:
+   preprocessing:
+     enabled: true
+     status: completed
+     steps:
+       - tool: upload_original_to_s3
+         arguments: ...
+         result: ...
+
+4. Kiro reads the enriched request.yml and content repo context.
+
+5. Kiro writes archive outputs:
+   captures/<capture-id>/
+   todo/
+   index/
+
+6. content-archiver-telegram commits and optionally pushes/opens a PR.
+```
+
+`request.yml` is the handoff document. Kiro should treat `preprocessing.steps` as the
+source of truth for deterministic tool results and should not try to call MCP tools,
+shell commands, or subagents as a fallback in non-interactive mode.
+
+The MCP server/tool contract belongs to `content-archive-repo`, not this repo. The
+Telegram runtime calls that contract but does not reimplement archive tool behavior.
 
 ## Setup
 
