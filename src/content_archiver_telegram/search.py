@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from typing import Any
 
 from .config import Settings
@@ -13,15 +14,18 @@ def index_archive(settings: Settings) -> dict[str, Any]:
 
 
 def search_archive(settings: Settings, *, query: str, limit: int = 10) -> dict[str, Any]:
-    with StdioMCPClient(settings) as client:
-        index_result = client.call_tool("index_lancedb", {})
-        search_result = client.call_tool(
-            "semantic_search",
-            {
-                "query": query,
-                "limit": limit,
-            },
-        )
+    try:
+        with StdioMCPClient(settings) as client:
+            index_result = client.call_tool("index_lancedb", {})
+            search_result = client.call_tool(
+                "semantic_search",
+                {
+                    "query": query,
+                    "limit": limit,
+                },
+            )
+    finally:
+        cleanup_generated_index_artifacts(settings)
     return {
         "ok": True,
         "query": query,
@@ -83,6 +87,33 @@ def format_search_result(result: dict[str, Any]) -> str:
     if len(groups) > len(shown_groups):
         lines.append(f"Showing top {len(shown_groups)} captures from {len(results)} matching chunks.")
     return "\n".join(lines)
+
+
+def cleanup_generated_index_artifacts(settings: Settings) -> None:
+    generated_paths = [
+        "index/lancedb-manifest.yml",
+        "index/index-report.json",
+        "index/semantic-records.jsonl",
+    ]
+    repo_path = settings.content_repo_path
+    for path in generated_paths:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_path), "ls-files", "--error-unmatch", path],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode == 0:
+            subprocess.run(
+                ["git", "-C", str(repo_path), "checkout", "--", path],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            continue
+        target = repo_path / path
+        if target.exists():
+            target.unlink()
 
 
 def _group_results_by_capture(results: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -9,6 +9,7 @@ set -euo pipefail
 : "${ARCHIVE_TOOLS_SYNC_ARGS:=--locked --no-dev}"
 : "${KIRO_GLOBAL_MCP_SYNC:=true}"
 : "${KIRO_GLOBAL_MCP_PATH:=/root/.kiro/settings/mcp.json}"
+: "${CLEAN_GENERATED_INDEX_ON_STARTUP:=true}"
 
 mkdir -p "$TELEGRAM_DOWNLOAD_DIR"
 
@@ -20,6 +21,24 @@ fi
 
 run_git() {
   git "${git_auth_args[@]}" "$@"
+}
+
+clean_generated_index_artifacts() {
+  if [[ "$CLEAN_GENERATED_INDEX_ON_STARTUP" != "true" ]]; then
+    return
+  fi
+
+  for path in \
+    "index/lancedb-manifest.yml" \
+    "index/index-report.json" \
+    "index/semantic-records.jsonl"
+  do
+    if git -C "$CONTENT_REPO_PATH" ls-files --error-unmatch "$path" >/dev/null 2>&1; then
+      git -C "$CONTENT_REPO_PATH" checkout -- "$path" || true
+    else
+      rm -f "$CONTENT_REPO_PATH/$path"
+    fi
+  done
 }
 
 prepare_cloned_content_repo() {
@@ -37,6 +56,8 @@ prepare_cloned_content_repo() {
     fi
     run_git clone --branch "${GIT_BRANCH:-main}" "$CONTENT_REPO_GIT_URL" "$CONTENT_REPO_PATH"
   fi
+
+  clean_generated_index_artifacts
 
   if [[ -n "$(git -C "$CONTENT_REPO_PATH" status --porcelain)" ]]; then
     echo "Content repository has uncommitted changes; refusing startup sync." >&2

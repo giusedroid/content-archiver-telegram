@@ -147,6 +147,12 @@ Search results should include:
 Links are built from `GITHUB_REPOSITORY` and `GIT_BRANCH`; `GITHUB_REPOSITORY` must refer
 to the content archive repository.
 
+`/search` may refresh generated index files in the runtime archive checkout. Those files
+must be treated as runtime artifacts, not capture changes. The Telegram runtime should
+remove or restore `index/lancedb-manifest.yml`, `index/index-report.json`, and
+`index/semantic-records.jsonl` after search and before startup sync so generated index
+state cannot block later captures or container restarts.
+
 For NVIDIA Build/NIM embeddings:
 
 ```env

@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+import subprocess
+
 from content_archiver_telegram.config import Settings
-from content_archiver_telegram.search import format_search_result, index_archive, search_archive
+from content_archiver_telegram.search import (
+    cleanup_generated_index_artifacts,
+    format_search_result,
+    index_archive,
+    search_archive,
+)
 
 
 class FakeMCPClient:
@@ -100,3 +107,49 @@ def test_format_search_result() -> None:
     assert "Open capture: https://github.com/giusedroid/content-archive-repo/blob/main/captures/aws-london-summit/capture.md" in message
     assert "Open matched file: https://github.com/giusedroid/content-archive-repo/blob/main/captures/aws-london-summit/capture.md#L4-L5" in message
     assert "Another chunk" not in message
+
+
+def test_cleanup_generated_index_artifacts_restores_repo(tmp_path) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    index_dir = tmp_path / "index"
+    index_dir.mkdir()
+    manifest = index_dir / "lancedb-manifest.yml"
+    manifest.write_text("version: 1\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "index/lancedb-manifest.yml"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "seed"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    manifest.write_text("version: 2\n", encoding="utf-8")
+    (index_dir / "index-report.json").write_text("{}", encoding="utf-8")
+    (index_dir / "semantic-records.jsonl").write_text("{}", encoding="utf-8")
+
+    cleanup_generated_index_artifacts(Settings(content_repo_path=tmp_path))
+
+    assert manifest.read_text(encoding="utf-8") == "version: 1\n"
+    assert not (index_dir / "index-report.json").exists()
+    assert not (index_dir / "semantic-records.jsonl").exists()
