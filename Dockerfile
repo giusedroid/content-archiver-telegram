@@ -4,7 +4,7 @@ ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     CONTENT_REPO_PATH=/workspace/content-repo \
     TELEGRAM_DOWNLOAD_DIR=/app/.content-archiver-telegram/downloads \
-    KIRO_CLI=kiro-cli \
+    KIRO_CLI=/usr/local/bin/kiro-cli \
     PATH="/root/.local/bin:/root/.kiro/bin:/app/.venv/bin:${PATH}"
 
 WORKDIR /app
@@ -21,7 +21,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL https://cli.kiro.dev/install | bash \
-    && kiro-cli --version
+    && KIRO_CLI_BIN="$(command -v kiro-cli)" \
+    && ln -sf "$KIRO_CLI_BIN" /usr/local/bin/kiro-cli \
+    && /usr/local/bin/kiro-cli --version
 
 COPY pyproject.toml uv.lock .python-version README.md ./
 COPY src ./src

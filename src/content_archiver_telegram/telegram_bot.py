@@ -9,7 +9,8 @@ from .capture_workspace import prepare_capture_settings
 from .config import Settings
 from .git_push import GitPushError, GitRepository
 from .incoming import IncomingRequest, request_id, write_incoming_request
-from .kiro_runner import KiroRunner
+from .kiro_runner import KiroRunner, KiroRunError
+from .preprocessor import PreprocessError, preprocess_request
 from .workflows import workflow_path
 
 
@@ -84,13 +85,24 @@ def run_bot(settings: Settings) -> None:
             source_file=source_file,
         )
         if settings.telegram_chatty:
+            await update.effective_message.reply_text(_preprocess_message(request))
+        try:
+            await asyncio.to_thread(preprocess_request, request_settings, request_path)
+        except PreprocessError as exc:
+            await update.effective_message.reply_text(_failure_message(request, exc))
+            return
+        if settings.telegram_chatty:
             await update.effective_message.reply_text(_analysis_message(request))
-        result = await asyncio.to_thread(
-            _run_capture_workflow,
-            request_settings,
-            request,
-            request_path,
-        )
+        try:
+            result = await asyncio.to_thread(
+                _run_capture_workflow,
+                request_settings,
+                request,
+                request_path,
+            )
+        except KiroRunError as exc:
+            await update.effective_message.reply_text(_failure_message(request, exc))
+            return
         await update.effective_message.reply_text(_result_message(request, result, settings))
 
     app = Application.builder().token(settings.telegram_bot_token).build()
@@ -205,8 +217,15 @@ def _intro_message(request: IncomingRequest) -> str:
 
 def _analysis_message(request: IncomingRequest) -> str:
     return (
-        f"I wrote the intake file for `{_short_request_id(request.id)}` and handed it to Kiro. "
+        f"I enriched the intake file for `{_short_request_id(request.id)}` and handed it to Kiro. "
         "I am checking repository context and doing the semantic pass now."
+    )
+
+
+def _preprocess_message(request: IncomingRequest) -> str:
+    return (
+        f"I wrote the intake file for `{_short_request_id(request.id)}`. "
+        "I am running the archive MCP tools deterministically before Kiro."
     )
 
 
@@ -229,6 +248,15 @@ def _result_message(request: IncomingRequest, result: dict[str, Any], settings: 
     elif settings.uses_pull_requests:
         lines.append("I did not get a PR URL back, so check the branch/push result before merging.")
     return "\n".join(lines)
+
+
+def _failure_message(request: IncomingRequest, exc: Exception) -> str:
+    detail = str(exc).strip().splitlines()[0] if str(exc).strip() else "Kiro failed."
+    return (
+        f"Request `{_short_request_id(request.id)}` failed before commit.\n"
+        f"{detail}\n"
+        "I did not commit or open a PR for this capture."
+    )
 
 
 def _short_request_id(request_id_value: str) -> str:

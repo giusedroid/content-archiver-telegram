@@ -7,6 +7,8 @@ set -euo pipefail
 : "${CONTENT_REPO_GIT_URL:=}"
 : "${ARCHIVE_TOOLS_SYNC:=true}"
 : "${ARCHIVE_TOOLS_SYNC_ARGS:=--locked --no-dev}"
+: "${KIRO_GLOBAL_MCP_SYNC:=true}"
+: "${KIRO_GLOBAL_MCP_PATH:=/root/.kiro/settings/mcp.json}"
 
 mkdir -p "$TELEGRAM_DOWNLOAD_DIR"
 
@@ -74,6 +76,17 @@ if [[ "$ARCHIVE_TOOLS_SYNC" == "true" ]]; then
   fi
 
   uv sync --project "$CONTENT_REPO_PATH/tools" $ARCHIVE_TOOLS_SYNC_ARGS
+fi
+
+if [[ "$KIRO_GLOBAL_MCP_SYNC" == "true" ]]; then
+  archive_mcp_config="$CONTENT_REPO_PATH/.kiro/settings/mcp.json"
+  if [[ ! -f "$archive_mcp_config" ]]; then
+    echo "Archive MCP settings not found at $archive_mcp_config" >&2
+    exit 1
+  fi
+
+  mkdir -p "$(dirname "$KIRO_GLOBAL_MCP_PATH")"
+  cp "$archive_mcp_config" "$KIRO_GLOBAL_MCP_PATH"
 fi
 
 export PATH="$CONTENT_REPO_PATH/tools/.venv/bin:$PATH"

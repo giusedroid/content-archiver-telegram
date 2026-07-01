@@ -77,8 +77,12 @@ class Settings:
     kiro_cli: str | None = None
     kiro_api_key: str | None = None
     kiro_trust_tools: str = DEFAULT_KIRO_TRUST_TOOLS
-    kiro_require_mcp_startup: bool = True
+    kiro_require_mcp_startup: bool = False
     kiro_timeout_seconds: int = 600
+    kiro_verbose: int = 0
+    kiro_log_dir: Path = Path(".content-archiver-telegram/kiro-logs")
+    archive_mcp_preprocess: bool = True
+    archive_mcp_timeout_seconds: int = 900
     git_push: bool = False
     git_remote: str = "origin"
     git_branch: str = "main"
@@ -105,8 +109,12 @@ class Settings:
             kiro_cli=os.getenv("KIRO_CLI") or None,
             kiro_api_key=os.getenv("KIRO_API_KEY") or None,
             kiro_trust_tools=_kiro_trust_tools_env(os.getenv("KIRO_TRUST_TOOLS")),
-            kiro_require_mcp_startup=_bool_env(os.getenv("KIRO_REQUIRE_MCP_STARTUP"), True),
+            kiro_require_mcp_startup=_bool_env(os.getenv("KIRO_REQUIRE_MCP_STARTUP"), False),
             kiro_timeout_seconds=int(os.getenv("KIRO_TIMEOUT_SECONDS", "600")),
+            kiro_verbose=max(0, int(os.getenv("KIRO_VERBOSE", "0"))),
+            kiro_log_dir=Path(os.getenv("KIRO_LOG_DIR", ".content-archiver-telegram/kiro-logs")),
+            archive_mcp_preprocess=_bool_env(os.getenv("ARCHIVE_MCP_PREPROCESS"), True),
+            archive_mcp_timeout_seconds=int(os.getenv("ARCHIVE_MCP_TIMEOUT_SECONDS", "900")),
             git_push=_bool_env(os.getenv("GIT_PUSH"), False),
             git_remote=os.getenv("GIT_REMOTE", "origin").strip() or "origin",
             git_branch=os.getenv("GIT_BRANCH", "main").strip() or "main",
@@ -130,6 +138,7 @@ class Settings:
         self.content_repo_path = self.content_repo_path.resolve()
         self.telegram_download_dir = self.telegram_download_dir.resolve()
         self.git_worktree_root = self.git_worktree_root.resolve()
+        self.kiro_log_dir = self.kiro_log_dir.resolve()
         return self
 
     @property

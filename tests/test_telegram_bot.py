@@ -5,7 +5,12 @@ from types import SimpleNamespace
 
 from content_archiver_telegram.config import Settings
 from content_archiver_telegram.incoming import IncomingRequest
-from content_archiver_telegram.telegram_bot import _download, _intro_message, _result_message
+from content_archiver_telegram.telegram_bot import (
+    _download,
+    _failure_message,
+    _intro_message,
+    _result_message,
+)
 
 
 class FakeTelegramFile:
@@ -63,3 +68,18 @@ def test_result_message_includes_pr_url() -> None:
     assert "Kiro summary: Archived under captures/aws-london." in message
     assert "`captures/aws-london/`" in message
     assert "https://github.com/o/r/pull/9" in message
+
+
+def test_failure_message_says_no_commit_or_pr() -> None:
+    request = IncomingRequest(
+        id="2026-06-30-telegram-44",
+        source="telegram",
+        source_message_id="44",
+        media_type="image",
+    )
+
+    message = _failure_message(request, RuntimeError("Kiro completed without MCP tools mounted."))
+
+    assert "egram-44" in message
+    assert "failed before commit" in message
+    assert "did not commit or open a PR" in message

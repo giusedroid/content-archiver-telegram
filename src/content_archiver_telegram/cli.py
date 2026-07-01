@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import os
 from pathlib import Path
 
 import typer
@@ -8,6 +10,7 @@ from .capture_workspace import prepare_capture_settings
 from .config import Settings
 from .incoming import IncomingRequest, detect_media_type, request_id, write_incoming_request
 from .kiro_runner import KiroRunner
+from .preprocessor import preprocess_request
 from .workflows import workflow_path
 
 
@@ -15,6 +18,10 @@ app = typer.Typer(help="Telegram ingress for the Kiro-operated content archive."
 
 
 def _settings() -> Settings:
+    logging.basicConfig(
+        level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     return Settings.from_env()
 
 
@@ -47,6 +54,7 @@ def process_file(
         request=request,
         source_file=source,
     )
+    preprocess_request(request_settings, request_path)
     result = KiroRunner(request_settings).run_workflow(
         workflow_path=workflow_path(request_settings.content_repo_path, detected),
         request_path=request_path,

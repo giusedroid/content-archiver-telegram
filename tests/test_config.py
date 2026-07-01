@@ -59,16 +59,42 @@ def test_pull_request_delivery_requires_token() -> None:
         Settings(capture_delivery_mode="pull-request").validate_delivery_mode()
 
 
-def test_kiro_requires_mcp_startup_by_default(monkeypatch) -> None:
+def test_kiro_mcp_startup_is_disabled_by_default(monkeypatch) -> None:
     monkeypatch.delenv("KIRO_REQUIRE_MCP_STARTUP", raising=False)
+
+    assert Settings.from_env().kiro_require_mcp_startup is False
+
+
+def test_kiro_require_mcp_startup_can_be_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("KIRO_REQUIRE_MCP_STARTUP", "true")
 
     assert Settings.from_env().kiro_require_mcp_startup is True
 
 
-def test_kiro_require_mcp_startup_can_be_disabled(monkeypatch) -> None:
-    monkeypatch.setenv("KIRO_REQUIRE_MCP_STARTUP", "false")
+def test_archive_mcp_preprocess_is_enabled_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("ARCHIVE_MCP_PREPROCESS", raising=False)
 
-    assert Settings.from_env().kiro_require_mcp_startup is False
+    assert Settings.from_env().archive_mcp_preprocess is True
+
+
+def test_archive_mcp_preprocess_can_be_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("ARCHIVE_MCP_PREPROCESS", "false")
+    monkeypatch.setenv("ARCHIVE_MCP_TIMEOUT_SECONDS", "7")
+
+    settings = Settings.from_env()
+
+    assert settings.archive_mcp_preprocess is False
+    assert settings.archive_mcp_timeout_seconds == 7
+
+
+def test_kiro_diagnostics_settings_parse_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("KIRO_VERBOSE", "2")
+    monkeypatch.setenv("KIRO_LOG_DIR", "kiro-debug")
+
+    settings = Settings.from_env()
+
+    assert settings.kiro_verbose == 2
+    assert settings.kiro_log_dir.name == "kiro-debug"
 
 
 def test_kiro_trusts_archive_mcp_tools_by_default(monkeypatch) -> None:

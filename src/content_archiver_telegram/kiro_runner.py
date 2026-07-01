@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +25,9 @@ class KiroRunError(RuntimeError):
     pass
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 @dataclass(slots=True)
 class KiroRunner:
     settings: Settings
@@ -38,7 +43,7 @@ class KiroRunner:
         )
         git = GitRepository(self.settings)
         before_head = git.current_head()
-        output = self._run(prompt)
+        output = self._run(prompt, run_label=request_path.parent.name)
         result = _parse_json_output(output)
         result["_kiro_log"] = output
         commit = git.commit_all_if_changed(
@@ -76,10 +81,10 @@ class KiroRunner:
             f"User search query:\n{query}\n\n"
             "Return only valid JSON for Telegram with keys ok, message, and results."
         )
-        output = self._run(prompt)
+        output = self._run(prompt, run_label="search")
         return _parse_json_output(output)
 
-    def _run(self, prompt: str) -> str:
+    def _run(self, prompt: str, *, run_label: str) -> str:
         env = os.environ.copy()
         if self.settings.kiro_api_key:
             env["KIRO_API_KEY"] = self.settings.kiro_api_key
@@ -90,12 +95,31 @@ class KiroRunner:
         args = [
             self.settings.kiro_cli or "kiro-cli",
             "chat",
+            *["-v" for _ in range(self.settings.kiro_verbose)],
             "--no-interactive",
             f"--trust-tools={self.settings.kiro_trust_tools}",
         ]
         if self.settings.kiro_require_mcp_startup:
             args.append("--require-mcp-startup")
         args.append(prompt)
+        workspace_mcp = self.settings.content_repo_path / ".kiro" / "settings" / "mcp.json"
+        global_mcp = Path(os.getenv("KIRO_GLOBAL_MCP_PATH", "/root/.kiro/settings/mcp.json"))
+        LOGGER.info(
+            "Starting Kiro run label=%s cwd=%s cli=%s verbose=%s require_mcp=%s "
+            "trust_tool_count=%s workspace_mcp_exists=%s global_mcp=%s global_mcp_exists=%s "
+            "prompt_chars=%s command=%s",
+            run_label,
+            self.settings.content_repo_path,
+            self.settings.kiro_cli or "kiro-cli",
+            self.settings.kiro_verbose,
+            self.settings.kiro_require_mcp_startup,
+            len([tool for tool in self.settings.kiro_trust_tools.split(",") if tool]),
+            workspace_mcp.exists(),
+            global_mcp,
+            global_mcp.exists(),
+            len(prompt),
+            _safe_command(args),
+        )
         try:
             completed = subprocess.run(
                 args,
@@ -112,11 +136,41 @@ class KiroRunner:
             raise KiroRunError(f"Failed to run Kiro CLI: {args[0]}") from exc
 
         output = (completed.stdout or "") + (completed.stderr or "")
+        redacted_output = _redact(output, self.settings)
+        log_path = _write_kiro_log(
+            settings=self.settings,
+            run_label=run_label,
+            args=args,
+            returncode=completed.returncode,
+            stdout=completed.stdout or "",
+            stderr=completed.stderr or "",
+        )
+        LOGGER.info(
+            "Kiro run finished label=%s returncode=%s stdout_chars=%s stderr_chars=%s log_path=%s",
+            run_label,
+            completed.returncode,
+            len(completed.stdout or ""),
+            len(completed.stderr or ""),
+            log_path,
+        )
         if completed.returncode != 0:
             raise KiroRunError(
-                _redact(f"Kiro failed with exit {completed.returncode}:\n{output}", self.settings)
+                f"Kiro failed with exit {completed.returncode}. "
+                f"Redacted log: {log_path}\n{redacted_output}"
             )
-        return _redact(output, self.settings)
+        if self.settings.kiro_require_mcp_startup and _mcp_startup_failed(output):
+            LOGGER.warning(
+                "Kiro MCP startup failed label=%s log_path=%s output_tail=%s",
+                run_label,
+                log_path,
+                _tail(redacted_output, 12000),
+            )
+            raise KiroRunError(
+                "Kiro completed without MCP tools mounted even though "
+                "KIRO_REQUIRE_MCP_STARTUP=true. "
+                f"Redacted log: {log_path}\n{redacted_output}"
+            )
+        return redacted_output
 
 
 def _workflow_prompt(
@@ -130,8 +184,10 @@ def _workflow_prompt(
     request_rel = request_path.relative_to(content_repo_path).as_posix()
     return (
         "You are Kiro headless operating inside this content archive repository.\n"
-        "Behave like Kiro IDE opened at the content repo root. Use repo files, .kiro "
-        "steering, and configured MCP tools. Edit files directly when appropriate.\n\n"
+        "Behave like Kiro IDE opened at the content repo root. Use repo files and .kiro "
+        "steering. The Telegram runtime has already executed deterministic archive MCP "
+        "tooling and written results into the incoming request file. Do not try to call "
+        "MCP tools, shell commands, or subagents. Edit files directly when appropriate.\n\n"
         f"Workflow file: {workflow_rel}\n"
         f"Incoming request file: {request_rel}\n\n"
         "Follow this workflow:\n\n"
@@ -214,6 +270,60 @@ def _pull_request_body(*, result: dict[str, Any], request_path: Path) -> str:
 
 def _fence_safe(text: str) -> str:
     return text.replace("```", "`\u200b``")
+
+
+def _mcp_startup_failed(output: str) -> bool:
+    normalized = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
+    return (
+        "Failed to retrieve MCP settings" in normalized
+        or "MCP functionality disabled" in normalized
+    )
+
+
+def _write_kiro_log(
+    *,
+    settings: Settings,
+    run_label: str,
+    args: list[str],
+    returncode: int,
+    stdout: str,
+    stderr: str,
+) -> Path:
+    settings.kiro_log_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    path = settings.kiro_log_dir / f"{timestamp}-{_safe_label(run_label)}-{os.getpid()}.log"
+    content = (
+        f"cwd: {settings.content_repo_path}\n"
+        f"returncode: {returncode}\n"
+        f"command: {_safe_command(args)}\n"
+        f"kiro_verbose: {settings.kiro_verbose}\n"
+        f"require_mcp_startup: {settings.kiro_require_mcp_startup}\n"
+        f"trust_tool_count: "
+        f"{len([tool for tool in settings.kiro_trust_tools.split(',') if tool])}\n"
+        f"workspace_mcp: {settings.content_repo_path / '.kiro' / 'settings' / 'mcp.json'}\n"
+        f"global_mcp: {os.getenv('KIRO_GLOBAL_MCP_PATH', '/root/.kiro/settings/mcp.json')}\n"
+        "\n--- stdout ---\n"
+        f"{stdout}\n"
+        "\n--- stderr ---\n"
+        f"{stderr}\n"
+    )
+    path.write_text(_redact(content, settings), encoding="utf-8")
+    return path
+
+
+def _safe_command(args: list[str]) -> str:
+    safe_args = [*args]
+    if safe_args:
+        safe_args[-1] = f"<prompt chars={len(safe_args[-1])}>"
+    return " ".join(safe_args)
+
+
+def _safe_label(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-") or "kiro"
+
+
+def _tail(text: str, max_chars: int) -> str:
+    return text if len(text) <= max_chars else text[-max_chars:]
 
 
 def _parse_json_output(output: str) -> dict[str, Any]:

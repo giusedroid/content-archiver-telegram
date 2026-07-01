@@ -1,6 +1,7 @@
 import base64
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -131,6 +132,39 @@ def test_git_create_capture_worktree_creates_request_branch(monkeypatch, tmp_pat
             str(path),
             "main",
         ]
+    ]
+
+
+def test_git_create_capture_worktree_links_archive_tools_venv(monkeypatch, tmp_path) -> None:
+    symlinks = []
+
+    def fake_run(args, **kwargs):
+        if args[:3] == ["git", "worktree", "add"]:
+            worktree_path = Path(args[5])
+            (worktree_path / "tools").mkdir(parents=True)
+        return _completed(args)
+
+    def fake_symlink(source, target, target_is_directory=False):
+        symlinks.append((source, target, target_is_directory))
+
+    monkeypatch.setattr("content_archiver_telegram.git_push.subprocess.run", fake_run)
+    monkeypatch.setattr("content_archiver_telegram.git_push.os.symlink", fake_symlink)
+    repo_path = tmp_path / "repo"
+    (repo_path / "tools" / ".venv").mkdir(parents=True)
+    settings = Settings(
+        content_repo_path=repo_path,
+        git_worktree_root=tmp_path / "worktrees",
+        git_branch="main",
+    )
+
+    worktree_path, _ = GitRepository(settings).create_capture_worktree(request_id="telegram-9")
+
+    assert symlinks == [
+        (
+            repo_path / "tools" / ".venv",
+            worktree_path / "tools" / ".venv",
+            True,
+        )
     ]
 
 

@@ -100,6 +100,24 @@ Kiro runs with `cwd` set to the content repository root so it behaves like Kiro 
 `KIRO_REQUIRE_MCP_STARTUP=true` is the default. If MCP startup fails, the Telegram
 interface should fail the capture instead of allowing Kiro to write partial "MCP tools
 unavailable" notes. The switch may be set to `false` only for deliberate local debugging.
+Because Kiro CLI can currently emit MCP startup failures as warnings while still exiting
+with status 0, the Telegram runtime must scan Kiro stdout/stderr for `Failed to retrieve
+MCP settings` and `MCP functionality disabled` and treat either as a failed run before
+committing or opening a pull request.
+
+Kiro diagnostics are controlled by:
+
+```env
+KIRO_VERBOSE=0
+KIRO_LOG_DIR=.content-archiver-telegram/kiro-logs
+LOG_LEVEL=INFO
+```
+
+`KIRO_VERBOSE` maps to repeated Kiro CLI `-v` flags. For example, `KIRO_VERBOSE=2`
+invokes `kiro-cli chat -v -v ...`. The runtime must log a redacted Kiro transcript for
+each run under `KIRO_LOG_DIR`, including cwd, command shape, return code, stdout, and
+stderr. Runtime logs must include the redacted transcript path when a Kiro/MCP failure is
+detected.
 
 ## Docker Runtime
 
@@ -109,10 +127,11 @@ The container image must:
 
 - use `uv` to install the Python package from `pyproject.toml` and `uv.lock`
 - install `kiro-cli` during the Docker build
+- expose `kiro-cli` through a stable `/usr/local/bin/kiro-cli` symlink
 - install Git and `ffmpeg`
 - provide Python and `uv` so cloned archive repo tools can be synced at startup
 - run `content-archiver-telegram serve` by default
-- set `KIRO_CLI=kiro-cli`
+- set `KIRO_CLI=/usr/local/bin/kiro-cli`
 - set `CONTENT_REPO_PATH=/workspace/content-repo`
 - set `TELEGRAM_DOWNLOAD_DIR=/app/.content-archiver-telegram/downloads`
 - configure the cloned content repository as a Git safe directory
@@ -158,10 +177,39 @@ The Docker image must not own or vendor archive MCP Python dependencies. The arc
 owns `tools/pyproject.toml` and `tools/uv.lock`; the Telegram container only supplies the
 compute environment that syncs and runs that project.
 
+In pull-request mode, request worktrees must reuse the already-synced archive tools
+environment from the main runtime checkout. After creating a request worktree, the
+Telegram runtime links:
+
+```text
+<request-worktree>/tools/.venv -> /workspace/content-repo/tools/.venv
+```
+
+This prevents Kiro/MCP startup from installing archive tool dependencies separately for
+every request branch.
+
 The active MCP registration should remain portable for Kiro IDE and Docker. It may use
 `uv run --project tools content-archive-mcp`; Docker performance comes from cloning the
 archive into a Linux-native volume and disabling runtime bytecode compilation, not from a
 container-only command path.
+
+As a compatibility workaround for Kiro CLI MCP discovery, the Docker entrypoint also
+mirrors the archive repo MCP config into Kiro's global settings path before starting the
+bot:
+
+```text
+/workspace/content-repo/.kiro/settings/mcp.json -> /root/.kiro/settings/mcp.json
+```
+
+This behavior is controlled by:
+
+```env
+KIRO_GLOBAL_MCP_SYNC=true
+KIRO_GLOBAL_MCP_PATH=/root/.kiro/settings/mcp.json
+```
+
+The archive repository remains the source of truth. The global file is a runtime copy
+used only so Kiro CLI can try global MCP discovery.
 
 ## Delivery Runtime
 
@@ -209,13 +257,14 @@ Pull request procedure:
 
 1. Create branch `capture/<request-id>` from `GIT_BRANCH`.
 2. Create a git worktree under `GIT_WORKTREE_ROOT/<request-id>`.
-3. Write `.content-archiver/incoming/<request-id>/request.yml` inside that worktree.
-4. Invoke Kiro with the request worktree as `cwd`.
-5. Commit changed files in that worktree.
-6. Push `HEAD:refs/heads/capture/<request-id>` to `GIT_REMOTE`.
-7. Open a pull request from `capture/<request-id>` into `GIT_BRANCH`.
-8. Include the full redacted Kiro stdout/stderr log in the pull request body.
-9. Reply to Telegram with the request id, Kiro summary, proposed location, and PR URL.
+3. Link the request worktree `tools/.venv` to the main runtime checkout `tools/.venv`.
+4. Write `.content-archiver/incoming/<request-id>/request.yml` inside that worktree.
+5. Invoke Kiro with the request worktree as `cwd`.
+6. Commit changed files in that worktree.
+7. Push `HEAD:refs/heads/capture/<request-id>` to `GIT_REMOTE`.
+8. Open a pull request from `capture/<request-id>` into `GIT_BRANCH`.
+9. Include the full redacted Kiro stdout/stderr log in the pull request body.
+10. Reply to Telegram with the request id, Kiro summary, proposed location, and PR URL.
 
 Search workflows must not commit or push.
 

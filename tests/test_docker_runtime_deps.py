@@ -30,6 +30,24 @@ def test_docker_entrypoint_syncs_archive_tools_project() -> None:
     assert 'export PATH="$CONTENT_REPO_PATH/tools/.venv/bin:$PATH"' in entrypoint
 
 
+def test_docker_entrypoint_mirrors_archive_mcp_to_kiro_global_settings() -> None:
+    entrypoint = Path("docker/entrypoint.sh").read_text(encoding="utf-8")
+
+    assert "KIRO_GLOBAL_MCP_SYNC:=true" in entrypoint
+    assert "KIRO_GLOBAL_MCP_PATH:=/root/.kiro/settings/mcp.json" in entrypoint
+    assert 'archive_mcp_config="$CONTENT_REPO_PATH/.kiro/settings/mcp.json"' in entrypoint
+    assert 'cp "$archive_mcp_config" "$KIRO_GLOBAL_MCP_PATH"' in entrypoint
+
+
+def test_dockerfile_exposes_stable_kiro_cli_path() -> None:
+    dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+    compose = Path("docker-compose.yml").read_text(encoding="utf-8")
+
+    assert "ln -sf \"$KIRO_CLI_BIN\" /usr/local/bin/kiro-cli" in dockerfile
+    assert "KIRO_CLI=/usr/local/bin/kiro-cli" in dockerfile
+    assert "KIRO_CLI: /usr/local/bin/kiro-cli" in compose
+
+
 def test_dockerfile_does_not_force_runtime_bytecode_compilation() -> None:
     dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
 

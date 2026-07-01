@@ -1,9 +1,11 @@
 import json
 import subprocess
 
+import pytest
+
 from content_archiver_telegram.config import Settings
 from content_archiver_telegram.git_push import GitCommitResult, GitPullRequestResult, GitPushResult
-from content_archiver_telegram.kiro_runner import KiroRunner
+from content_archiver_telegram.kiro_runner import KiroRunner, KiroRunError
 
 
 class FakeGitRepository:
@@ -95,6 +97,8 @@ def test_kiro_runner_does_not_pass_github_token_to_kiro(monkeypatch, tmp_path) -
         kiro_cli="kiro-cli",
         kiro_api_key="kiro-secret",
         github_token="github_pat_secret",
+        kiro_log_dir=tmp_path / "kiro-logs",
+        kiro_require_mcp_startup=True,
     )
 
     result = KiroRunner(settings).run_workflow(workflow_path=workflow, request_path=request)
@@ -134,14 +138,55 @@ def test_kiro_runner_can_disable_required_mcp_startup(monkeypatch, tmp_path) -> 
     settings = Settings(
         content_repo_path=tmp_path,
         kiro_cli="kiro-cli",
-        kiro_require_mcp_startup=False,
+        kiro_verbose=2,
+        kiro_log_dir=tmp_path / "kiro-logs",
     )
 
     result = KiroRunner(settings).run_workflow(workflow_path=workflow, request_path=request)
 
     assert result["git_commit"]["committed"] is True
     assert "--require-mcp-startup" not in captured_args
+    assert captured_args[2:4] == ["-v", "-v"]
     assert FakeGitRepository.committed_messages == ["capture: add aws-london image"]
+
+
+def test_kiro_runner_rejects_successful_run_with_disabled_mcp(monkeypatch, tmp_path) -> None:
+    workflow = tmp_path / ".kiro" / "workflows" / "capture-image.md"
+    request = tmp_path / ".content-archiver" / "incoming" / "request.yml"
+    workflow.parent.mkdir(parents=True)
+    request.parent.mkdir(parents=True)
+    workflow.write_text("workflow", encoding="utf-8")
+    request.write_text("id: test\n", encoding="utf-8")
+
+    def fake_run(args, **kwargs):
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=0,
+            stdout=json.dumps({"ok": True, "message": "pending", "capture_id": "aws-london"}),
+            stderr="\nWARNING: Failed to retrieve MCP settings; MCP functionality disabled.\n",
+        )
+
+    monkeypatch.setattr("content_archiver_telegram.kiro_runner.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "content_archiver_telegram.kiro_runner.GitRepository",
+        FakeGitRepository,
+    )
+    settings = Settings(
+        content_repo_path=tmp_path,
+        kiro_cli="kiro-cli",
+        kiro_log_dir=tmp_path / "kiro-logs",
+        kiro_require_mcp_startup=True,
+    )
+
+    with pytest.raises(KiroRunError, match="Redacted log:") as exc_info:
+        KiroRunner(settings).run_workflow(workflow_path=workflow, request_path=request)
+
+    assert FakeGitRepository.committed_messages == []
+    log_paths = list((tmp_path / "kiro-logs").glob("*.log"))
+    assert len(log_paths) == 1
+    log_text = log_paths[0].read_text(encoding="utf-8")
+    assert "Failed to retrieve MCP settings" in log_text
+    assert "github_pat" not in str(exc_info.value)
 
 
 def test_kiro_runner_creates_pull_request_in_pr_mode(monkeypatch, tmp_path) -> None:
@@ -179,6 +224,7 @@ def test_kiro_runner_creates_pull_request_in_pr_mode(monkeypatch, tmp_path) -> N
         capture_delivery_mode="pull-request",
         git_capture_branch="capture/telegram-9",
         github_token="token",
+        kiro_log_dir=tmp_path / "kiro-logs",
     )
 
     result = KiroRunner(settings).run_workflow(workflow_path=workflow, request_path=request)

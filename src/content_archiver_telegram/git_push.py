@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -89,7 +90,25 @@ class GitRepository:
             self.settings.git_branch,
             check=True,
         )
+        self._link_archive_tools_venv(worktree_path)
         return worktree_path, branch
+
+    def _link_archive_tools_venv(self, worktree_path: Path) -> None:
+        source = self.settings.content_repo_path / "tools" / ".venv"
+        target = worktree_path / "tools" / ".venv"
+        if not source.exists() or not target.parent.exists():
+            return
+        if target.exists() or target.is_symlink():
+            if target.resolve() == source.resolve():
+                return
+            raise GitPushError(f"Archive tools venv already exists in capture worktree: {target}")
+        try:
+            os.symlink(source, target, target_is_directory=True)
+        except OSError as exc:
+            raise GitPushError(
+                "Failed to link archive tools venv into capture worktree. "
+                f"Source: {source}. Target: {target}."
+            ) from exc
 
     def commit_all_if_changed(self, *, message: str) -> GitCommitResult:
         before_head = self.current_head()
